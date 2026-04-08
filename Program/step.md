@@ -77,3 +77,6 @@
 | 日期 | 阶段 | 更新内容 |
 |------|------|----------|
 | 2026-04-07 | 文档搭建 | 项目命名 Chromatopsia，建立文档体系 |
+| 2026-04-08 | 基础设施 | 初始化 pnpm monorepo 骨架（packages/agent + packages/ui-shell） |
+| 2026-04-08 | 文档重组 | 文档迁移至 Program/，扩展 Agent 层设计文档 |
+| 2026-04-08 | 协作流程 | 新增 collaboration.md 和 plan.md，定义人工协作规则 |
