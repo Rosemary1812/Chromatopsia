@@ -83,7 +83,7 @@
 
 ## Phase 3：Tool 系统（8 个任务，可并行）
 
-### [ ] T-06：tools/registry.ts Tool 注册表
+### [x] T-06：tools/registry.ts Tool 注册表
 
 **文件**：`packages/agent/src/tools/registry.ts`
 
@@ -91,7 +91,7 @@
 
 **验证指南**：`packages/agent/verification/06-registry.md`
 
-### [ ] T-07：tools/executor.ts Tool 执行器
+### [x] T-07：tools/executor.ts Tool 执行器
 
 **文件**：`packages/agent/src/tools/executor.ts`
 
@@ -103,7 +103,7 @@
 
 **验证指南**：`packages/agent/verification/07-executor.md`
 
-### [ ] T-08：tools/bash.ts Bash Tool
+### [x] T-08：tools/bash.ts Bash Tool
 
 **文件**：`packages/agent/src/tools/bash.ts`
 
@@ -111,7 +111,7 @@
 
 **验证指南**：`packages/agent/verification/08-bash.md`
 
-### [ ] T-09：tools/read.ts Read Tool
+### [x] T-09：tools/read.ts Read Tool
 
 **文件**：`packages/agent/src/tools/read.ts`
 
@@ -119,7 +119,7 @@
 
 **验证指南**：`packages/agent/verification/09-read.md`
 
-### [ ] T-10：tools/edit.ts Edit Tool
+### [x] T-10：tools/edit.ts Edit Tool
 
 **文件**：`packages/agent/src/tools/edit.ts`
 
@@ -127,7 +127,7 @@
 
 **验证指南**：`packages/agent/verification/10-edit.md`
 
-### [ ] T-11：tools/grep.ts + tools/glob.ts Grep & Glob Tools
+### [x] T-11：tools/grep.ts + tools/glob.ts Grep & Glob Tools
 
 **文件**：`packages/agent/src/tools/grep.ts`、`packages/agent/src/tools/glob.ts`
 
@@ -135,7 +135,7 @@
 
 **验证指南**：`packages/agent/verification/11-grep-glob.md`
 
-### [ ] T-12：tools/websearch.ts WebSearch Tool
+### [x] T-12：tools/websearch.ts WebSearch Tool
 
 **文件**：`packages/agent/src/tools/websearch.ts`
 
@@ -143,7 +143,7 @@
 
 **验证指南**：`packages/agent/verification/12-websearch.md`
 
-### [ ] T-13：tools/webfetch.ts WebFetch Tool
+### [x] T-13：tools/webfetch.ts WebFetch Tool
 
 **文件**：`packages/agent/src/tools/webfetch.ts`
 

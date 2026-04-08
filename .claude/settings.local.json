@@ -3,7 +3,19 @@
     "allow": [
       "WebSearch",
       "WebFetch(domain:zh.wikipedia.org)",
-      "WebFetch(domain:genius.com)"
+      "WebFetch(domain:genius.com)",
+      "Read(//c/Users/wsmdm/.claude/skills/bug-fix/bug-fix-v2/**)",
+      "Read(//c/Users/wsmdm/.claude/skills/pr-rules/pr-rules/**)",
+      "Bash(git checkout:*)",
+      "Bash(git pull:*)",
+      "Bash(pnpm build:*)",
+      "Bash(pnpm test:*)",
+      "Bash(git add:*)",
+      "Bash(git commit -m ':*)",
+      "Bash(curl -s --connect-timeout 10 \"https://cn.bing.com/search?q=live+gold+price&count=5\" -H \"User-Agent: Mozilla/5.0\")",
+      "Bash(node --input-type=module -e ':*)",
+      "Bash(node:*)",
+      "Bash(pnpm tsx:*)"
     ]
   }
 }
