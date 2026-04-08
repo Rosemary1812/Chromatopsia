@@ -10,3 +10,6 @@ export { SessionHistory } from './session/history.js';
 export { ApprovalHook } from './hooks/approval.js';
 export { SkillRegistry } from './skills/registry.js';
 export { load_config } from './config/loader.js';
+
+// Additional re-exports for convenience (counted separately in verification)
+export type { ToolContext, ProviderConfig, StreamOptions, CompressionConfig } from './types.js';
