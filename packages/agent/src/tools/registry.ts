@@ -1,4 +1,3 @@
-// Placeholder - to be implemented in Phase 2
 import type { ToolDefinition } from '../types.js';
 
 export class ToolRegistry {
@@ -17,7 +16,10 @@ export class ToolRegistry {
   }
 
   get_dangerous(): ToolDefinition[] {
-    return this.get_all().filter(t => t.danger_level === 'dangerous');
+    // danger_level >= warning (i.e., 'warning' or 'dangerous')
+    return this.get_all().filter(
+      (t) => t.danger_level === 'warning' || t.danger_level === 'dangerous'
+    );
   }
 }
 
