@@ -67,7 +67,7 @@
 
 **验证指南**：`packages/agent/verification/04-anthropic.md`
 
-### [ ] T-05：llm/openai.ts OpenAI Provider
+### [x] T-05：llm/openai.ts OpenAI Provider
 
 **文件**：`packages/agent/src/llm/openai.ts`
 
