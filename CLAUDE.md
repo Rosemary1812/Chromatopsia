@@ -59,3 +59,52 @@ Worker control:
 - `next_action`
 
 When NOT to use: simple fixes, high-certainty tasks, or work that is faster to do directly in the current agent.
+
+---
+
+## Project Structure
+
+```
+Chromatopsia/
+├── packages/
+│   ├── agent/           # Agent 层代码（TypeScript，monorepo 核心包）
+│   │   ├── src/
+│   │   │   ├── llm/        # LLM Provider 抽象 + Anthropic/OpenAI
+│   │   │   ├── tools/      # Registry + 执行器 + 7个内置工具
+│   │   │   ├── session/    # Manager + Context + History + Summarizer
+│   │   │   ├── memory/     # Storage + Retriever + Injector
+│   │   │   ├── skills/     # Registry + Patcher
+│   │   │   ├── hooks/      # Approval + Logging + CostTracking
+│   │   │   ├── repl/       # Loop + Reflection + Slash + Ink 组件
+│   │   │   ├── config/     # YAML 配置加载
+│   │   │   ├── types.ts    # 全局类型定义
+│   │   │   └── index.ts    # 导出入口
+│   │   ├── tests/          # 测试
+│   │   └── package.json
+│   │
+│   └── ui-shell/       # 外围基建层代码（Tauri/Electron + React）
+│       ├── src/
+│       │   ├── canvas/      # 无限画布
+│       │   ├── floating/    # 悬浮窗
+│       │   ├── sidebar/     # 侧边栏
+│       │   └── voice/       # 语音输入
+│       └── package.json
+│
+├── Program/             # 设计文档（不放代码）
+│   ├── agent/
+│   │   ├── README.md        # Agent 层概要 + 状态表
+│   │   └── DESIGN.md        # Agent 层详细设计
+│   └── architecture/
+│       ├── README.md
+│       └── voice-input.md
+│
+├── package.json         # Root workspace
+└── pnpm-workspace.yaml
+```
+
+## 开发原则
+
+1. **Agent 核心先行** — Phase 1 专注于 Agent 调通，TUI/画布是后话
+2. **packages/agent 是纯库** — 无 UI 依赖，可以独立测试；ui-shell 依赖它
+3. **设计文档在 Program/** — 代码在 packages/，文档在 Program/，职责分离
+4. **从 Phase 1 开始** — 先实现 LLM Provider + Tool 系统，再逐步推进

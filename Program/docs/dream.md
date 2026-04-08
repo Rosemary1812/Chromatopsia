@@ -1,7 +1,8 @@
-# DevCanvas — 功能愿景
+# Chromatopsia — 功能愿景
 
-> 本文档描述 DevCanvas 需要实现的功能和特性，不涉及技术架构和实现细节。
-> 架构、目录结构、技术选型另见 `architecture.md`（待编写）。
+> 本文档描述 Chromatopsia 需要实现的功能和特性，不涉及技术架构和实现细节。
+> Agent 层详细设计已确定，参见 `Program/agent/DESIGN.md`。
+> 画布、悬浮窗等外围 UI 架构另见 `Program/architecture/README.md`。
 
 ---
 
@@ -51,7 +52,7 @@
 ## 3. 终端 (Terminal)
 
 ### 3.1 终端基础功能
-- 每个 Terminal 严格属于一个 Agent
+- 每个 Terminal 严格属于一个 Agent（运行 REPL 循环，参见 `Program/agent/DESIGN.md` §6）
 - 支持多 Terminal 并行运行（同一项目内）
 - Terminal 重排顺序
 - 关闭Terminal（确认）
@@ -61,6 +62,7 @@
 ### 3.2 终端交互
 - 消息输入（支持多行）
 - 终端输出显示（时间戳 + 类型图标）
+- 流式 Markdown 渲染（Agent 输出实时渲染，参见 `Program/agent/DESIGN.md` §6.0）
 - 搜索终端历史（⌘+F）
 - 自动滚动跟随输出
 - 手动滚动时暂停自动跟随
@@ -78,8 +80,8 @@
 ## 4. 多 Agent 系统
 
 ### 4.1 Agent 管理
-- 每个 Terminal 绑定一个 Agent 实例
-- Agent 类型：planner、coder、reviewer、tester 等
+- 每个 Terminal 绑定一个 Agent 实例（运行独立 REPL + Session）
+- Agent 类型：planner、coder、reviewer、tester 等（由 Skill 系统驱动，参见 `Program/agent/DESIGN.md` §8）
 - Agent 配色方案（唯一标识色）
 - Agent 状态：initialized、thinking、running、idle、waiting_decision、completed、error
 
@@ -124,7 +126,7 @@ Pending → In Progress → Completed
 ## 6. 决策系统 (Human-in-the-Loop)
 
 ### 6.1 决策触发
-- Agent 在关键操作前主动暂停并请求确认
+- Agent 在关键操作前主动暂停并请求确认（Approval 机制，参见 `Program/agent/DESIGN.md` §5）
 - 决策点类型：文件修改、执行危险命令、多文件改动、删除操作
 
 ### 6.2 决策显示
@@ -148,7 +150,7 @@ Pending → In Progress → Completed
 - 最小化时显示在屏幕角落（可拖拽）
 - 滚动显示所有项目进度
 - 每个项目显示：名称、进度条、百分比、活跃 Agent 数量
-- 决策卡片置顶显示
+- 决策卡片置顶显示（由 Agent 层 `ctx.showNotification()` 触发）
 
 ### 7.2 通知类型
 - 子 Agent 完成任务通知
@@ -206,9 +208,10 @@ Pending → In Progress → Completed
 
 ## 11. 未来扩展方向（记录用，不在当前范围）
 
+- 子 Agent 嵌套（当前为 1:1 Terminal-Agent，后期支持 AgentTool 嵌套）
 - 插件系统（自定义 Agent 类型）
 - 多人协作
 - 云端同步
 - 移动端支持
-- AI 模型自定义配置
 - 本地知识库 RAG 集成
+- 语音输入（`Program/architecture/voice-input.md` 已设计）

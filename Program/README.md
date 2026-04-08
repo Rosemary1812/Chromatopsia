@@ -2,6 +2,22 @@
 
 > 名字来源：王菲《色盲》—"天生这样盲目，你看了别人看不到的世界。"
 
+## 文档索引
+
+| 文档 | 说明 |
+|------|------|
+| `docs/design.md` | 完整设计文档（概念、视觉、技术细节） |
+| `docs/dream.md` | 原始愿景 |
+| `docs/analysis.md` | 分析笔记 |
+| `agent/README.md` | Agent 层概要 + 开发状态表 |
+| `agent/DESIGN.md` | Agent 层详细设计（接口、流程、代码结构） |
+| `architecture/README.md` | 外围基建概要 |
+| `architecture/voice-input.md` | 语音输入模块设计 |
+
+代码在 `packages/agent/`（Agent 层）和 `packages/ui-shell/`（UI 外壳）。
+
+---
+
 ## 核心理念
 
 **All in One AI Coding — 最简洁的流程，最小的入侵。**

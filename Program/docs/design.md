@@ -1,10 +1,33 @@
-# DevCanvas — 多项目并行 Agent 开发画布
+# Chromatopsia — 多项目并行 Agent 开发画布
 
 ## 1. Concept & Vision
 
-**DevCanvas** 是一款面向开发者的下一代 Agent 编程工具，核心理念是**将 AI 协作带入真实的多项目并行开发体验**。
+**Chromatopsia** 是一款面向开发者的下一代 Agent 编程工具，核心理念是**将 AI 协作带入真实的多项目并行开发体验**。
 
-不同于传统 AI  Coding 助手的单线程对话模式，DevCanvas 以无限画布为核心，支持开发者同时管理多个项目、多个终端、多个 Agent 任务，所有进度一目了然，子 Agent 的工作状态清晰可见，人类决策点精准触达。
+### 架构层次
+
+```
+┌─────────────────────────────────────────────┐
+│  UI 层（画布 + 悬浮窗）                      │
+│  Canvas / Mini Widget / Decision Modal        │
+├─────────────────────────────────────────────┤
+│  Agent 层（REPL + TUI）                      │
+│  Ink TUI / Slash Commands / Streaming Output │
+├─────────────────────────────────────────────┤
+│  Agent 核心（LLM + Tools + Skills）           │
+│  LLM Provider / Tool System / Skill 自学习    │
+├─────────────────────────────────────────────┤
+│  基础设施                                    │
+│  Session / Memory / Hooks / Approval         │
+└─────────────────────────────────────────────┘
+```
+
+**核心原则：Agent 是核心，画布是外层。** 先把 Agent 调通，再做 UI。
+
+详见 `Program/agent/DESIGN.md`（Agent 层详细设计）。
+
+
+不同于传统 AI Coding 助手的单线程对话模式，Chromatopsia 以无限画布为核心，支持开发者同时管理多个项目、多个终端、多个 Agent 任务，所有进度一目了然，子 Agent 的工作状态清晰可见，人类决策点精准触达。
 
 设计关键词：**沉浸式画布**、**多线程协作**、**进程可见性**、**零干扰决策流**
 
@@ -85,7 +108,7 @@ Canvas grid: 20px (snap to grid)
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │ [Toolbar]                                                       │
-│  DevCanvas Logo  │ Project: [Dropdown] │ [+ New Project] │ ⚙  │
+│  Chromatopsia Logo  │ Project: [Dropdown] │ [+ New Project] │ ⚙  │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
 │    ┌──────────────┐         ┌──────────────┐                    │
@@ -148,6 +171,9 @@ Canvas grid: 20px (snap to grid)
 
 ### 3.3 终端面板 (Terminal Panel)
 
+每个 Terminal 内部运行一个 **Ink TUI REPL**（详见 `Program/agent/DESIGN.md` §6 REPL 循环），
+渲染层使用 React + Ink 框架，Agent 逻辑与 UI 完全分离。
+
 ```
 ┌─────────────────────────────────────────┐
 │ ◉ terminal-1    [Agent: planner]    [⋮]│  ← 圆点=状态灯，菜单
@@ -158,7 +184,7 @@ Canvas grid: 20px (snap to grid)
 │ [09:32:03] 🔍 Analyzing codebase...     │
 │ [09:32:05] ✓ Found 3 relevant files    │
 │ [09:32:06] ✏️  Editing auth/service.ts  │
-│ [09:32:08] ⏳ Waiting for human confirm  │  ← 等待决策点
+│ [09:32:08] ⏳ Waiting for human confirm  │  ← Approval 决策点
 │                                         │
 │ ─────────────────────────────────────── │
 │ [09:32:10] 👤 Decision Required         │
@@ -175,8 +201,9 @@ Canvas grid: 20px (snap to grid)
 ```
 
 **终端面板特性：**
+- 基于 Ink TUI 实现流式 Markdown 渲染（Agent 输出实时渲染）
 - 终端输出带时间戳和类型图标（info/success/warning/error/decision）
-- 决策点特殊高亮显示（橙色边框 + 居中操作按钮）
+- Approval 决策点特殊高亮显示（橙色边框 + 居中操作按钮）
 - 支持滚动历史和搜索 (⌘+F)
 - 右上角菜单：清空、重放、导出日志、拆分视图
 
@@ -186,7 +213,7 @@ Canvas grid: 20px (snap to grid)
 
 ```
 ┌──────────────────────────┐
-│ ● DevCanvas    [−][□][×] │  ← 拖拽移动
+│ ● Chromatopsia    [−][□][×] │  ← 拖拽移动
 ├──────────────────────────┤
 │                          │
 │  Project A  ●●●●░░  80%  │  ← 滚动显示所有项目进度
@@ -203,6 +230,7 @@ Canvas grid: 20px (snap to grid)
 ```
 
 **悬浮窗特性：**
+- 决策等待时，通过 Agent 层的 `ctx.showNotification()` 自动触发弹出自适应决策卡片
 - 可拖拽到屏幕任意角落
 - 点击项目名快速定位到画布对应位置
 - 决策卡片自动置顶，点击直接展开决策详情
@@ -210,7 +238,12 @@ Canvas grid: 20px (snap to grid)
 
 ### 3.5 决策弹窗 (Decision Modal)
 
-**当 Agent 需要人类决策时，中央弹出：**
+**当 Agent 需要人类决策时，中央弹出。**
+
+决策逻辑由 `Program/agent/DESIGN.md` §5 Approval 机制驱动：
+- 危险操作（`dangerous` 级别工具）自动触发 Approval
+- 警告操作（`warning` 级别，涉及 >5 行修改或白名单外文件）触发 Approval
+- UI 层通过 `ApprovalModal` 组件（Ink）渲染弹窗，通过 `approvalResolversRef` Promise 机制回传决策
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -297,7 +330,8 @@ Canvas grid: 20px (snap to grid)
 
 ### 4.4 多 Agent 协作可视化
 
-每个 Terminal 严格属于一个 Agent，但多个 Terminal 可以属于同一个项目：
+每个 Terminal 严格对应一个 **Agent 实例**（运行独立的 REPL 循环 + Session），
+多个 Terminal 可以属于同一个项目：
 
 ```
 Project A
@@ -309,8 +343,10 @@ Project A
 
 **Agent 之间的通信：**
 - 通过共享项目状态（文件修改、任务进度）
-- 父 Agent（planner）可以分配子任务给其他 Agent
+- 父 Agent（planner）可以分配子任务给其他 Agent（通过 AgentTool，见 `Program/agent/DESIGN.md` §3）
 - 子 Agent 的进度实时反映在父 Agent 的任务列表中
+
+> 当前设计为 1 Agent / 1 Terminal。子 Agent 嵌套（AgentTool）作为后期扩展目标。
 
 ### 4.5 任务进度系统
 
@@ -421,11 +457,12 @@ Project A
 
 ## 6. Technical Constraints & Assumptions
 
-- **前端优先**：UI 必须先行，设计稿确认后再进入架构讨论
+- **Agent 核心先行**：UI 必须先行，设计稿确认后再进入架构讨论
 - **响应式**：最小支持 1280x720，目标 1440p+ 显示器
 - **性能目标**：100+ Terminal 同时运行仍保持流畅
 - **可访问性**：基础键盘导航支持，决策弹窗支持 Esc 关闭
 - **国际化**：UI 文字暂定英文，中文作为后续考虑
+- **LLM Provider**：由 Agent 层统一接入（`Program/agent/DESIGN.md` §2），画布层不直接调用 API
 
 ---
 
@@ -433,10 +470,12 @@ Project A
 
 以下内容暂不在 design.md 范围内，后续单独文档处理：
 
-- 后端架构设计
-- 数据库 / 状态持久化方案
-- 多 Agent 通信协议
-- LLM Provider 集成
+- **Agent 层详细设计** → 参见 `Program/agent/DESIGN.md`（已设计）
+- 数据库 / 状态持久化方案（Agent 层 Session JSONL 已设计，画布布局持久化待定）
+- 多 Agent 通信协议（子 Agent 嵌套作为后期扩展）
 - 部署和分发
 - 移动端 / 响应式适配
 - 插件系统
+
+**LLM Provider 集成** 已作为 Agent 层的核心模块设计完成（`Program/agent/DESIGN.md` §2），
+支持 Anthropic Messages API 和 OpenAI 兼容 API。

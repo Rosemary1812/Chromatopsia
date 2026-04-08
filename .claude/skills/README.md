@@ -1,5 +1,5 @@
 # Skills
 
-DevCanvas 专用 skill。
+Chromatopsia 专用 skill。
 
-TBD — `devcanvas.ts` 规划中
+TBD — `chromatopsia.ts` 规划中
