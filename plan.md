@@ -54,7 +54,7 @@
 
 ## Phase 2：LLM Provider 实现（2 个任务，可并行）
 
-### [ ] T-04：llm/anthropic.ts Anthropic Provider
+### [x] T-04：llm/anthropic.ts Anthropic Provider
 
 **文件**：`packages/agent/src/llm/anthropic.ts`
 
