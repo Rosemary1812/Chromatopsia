@@ -6,7 +6,7 @@
 
 ## Phase 0：基础设施（1 个任务）
 
-### [ ] T-00：types.ts + index.ts 全局类型与导出入口
+### [x] T-00：types.ts + index.ts 全局类型与导出入口
 
 **文件**：`packages/agent/src/types.ts`、`packages/agent/src/index.ts`
 
@@ -26,7 +26,7 @@
 
 ## Phase 1：LLM Provider 层（3 个任务，可并行）
 
-### [ ] T-01：config/loader.ts 配置加载
+### [x] T-01：config/loader.ts 配置加载
 
 **文件**：`packages/agent/src/config/loader.ts`
 
@@ -34,7 +34,7 @@
 
 **验证指南**：`packages/agent/verification/01-config.md`
 
-### [ ] T-02：llm/provider.ts LLM Provider 接口
+### [x] T-02：llm/provider.ts LLM Provider 接口
 
 **文件**：`packages/agent/src/llm/provider.ts`
 
@@ -42,11 +42,11 @@
 
 **验证指南**：`packages/agent/verification/02-llm-provider.md`
 
-### [ ] T-03：llm/index.ts Provider 工厂函数
+### [x] T-03：llm/index.ts Provider 工厂函数
 
-**文件**：`packages/agent/src/llm/index.ts`
+**文件**：`packages/agent/src/llm/index.ts`、`packages/agent/src/llm/anthropic.ts`、`packages/agent/src/llm/openai.ts`
 
-**内容**：createProvider() 路由函数，根据 type 返回 Anthropic 或 OpenAI Provider
+**内容**：createProvider() 路由函数，根据 type 返回 Anthropic 或 OpenAI Provider；stub implementations for T-04/T-05
 
 **验证指南**：`packages/agent/verification/03-llm-index.md`
 
