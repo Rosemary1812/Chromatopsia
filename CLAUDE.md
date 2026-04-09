@@ -59,9 +59,6 @@ Worker control:
 - `next_action`
 
 When NOT to use: simple fixes, high-certainty tasks, or work that is faster to do directly in the current agent.
-
----
-
 ## Project Structure
 
 ```

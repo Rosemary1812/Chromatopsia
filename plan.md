@@ -221,13 +221,17 @@
 
 ---
 
-## Phase 7：REPL 核心（4 个任务，可并行）
+## Phase 7：REPL 核心 + Idle-triggered Reflection + Skill 触发（7 个任务）
 
-### [ ] T-21：repl/reflection.ts 反思状态机
+### [ ] T-21：repl/reflection.ts 反思状态机（Idle-triggered 重写）
 
 **文件**：`packages/agent/src/repl/reflection.ts`
 
-**内容**：run_reflection()、synthesize_skill()、ReflectionState 管理、trigger_count 检查
+**内容**：
+- `run_idle_reflection()` — 用户空闲 `idle_timeout` 秒后触发，非阻塞
+- `synthesize_skill()` — 分析 `task_buffer` 合成新 Skill
+- `ReflectionState` 状态管理（`in_progress`、`trigger_count`、`last_active_at`）
+- `last_active_at` 更新逻辑：每次用户输入后 + Reflection 完成后
 
 **验证指南**：`packages/agent/verification/21-reflection.md`
 
@@ -239,21 +243,61 @@
 
 **验证指南**：`packages/agent/verification/22-slash.md`
 
-### [ ] T-23：repl/executor.ts 并行 Tool 执行
+### [ ] T-23：repl/executor.ts 并行 Tool 执行 + Skill 执行器
 
 **文件**：`packages/agent/src/repl/executor.ts`
 
-**内容**：execute_tool_calls_parallel()（safe 并行、guarded 串行）、Approval 集成、结果聚合
+**内容**：
+- `execute_tool_calls_parallel()` — safe 并行、guarded 串行、Approval 集成
+- `execute_skill()` — Skill 执行器，按 `skill.steps` 逐条执行 tool，失败时调用 `SkillPatcher.patch()`
+- `parse_step_to_tool_call()` — 解析 step 字符串为 ToolCall
 
 **验证指南**：`packages/agent/verification/23-repl-executor.md`
 
-### [ ] T-24：repl/loop.ts REPL 主循环
+### [ ] T-24：repl/loop.ts REPL 主循环（完全重写）
 
 **文件**：`packages/agent/src/repl/loop.ts`
 
-**内容**：run_repl()、双状态机（Normal/Reflection）、LLM 调用循环、TaskBuffer 管理、ReplContextValue
+**内容**：
+- `run_repl()` — 主循环，`Promise.race([readline, delay(IDLE_TIMEOUT)])` 实现 idle 检测
+- `handle_normal_turn()` — Normal turn 处理，用户输入 → LLM → tool 执行
+- Skill 前置匹配：每次输入先调用 `skillReg.trigger_match()`，匹配到则执行 Skill，不调 LLM
+- 双状态机（Normal/Reflection）在 idle 检测点切换，不打断 turn
 
 **验证指南**：`packages/agent/verification/24-repl-loop.md`
+
+### [ ] T-27：skills/registry.ts trigger_match() 新增
+
+**文件**：`packages/agent/src/skills/registry.ts`
+
+**内容**：
+- `trigger_match(input: string): Skill | null` — 按用户输入匹配 Skill
+  - `trigger_pattern` 正则匹配（权重 +100）
+  - `trigger_condition` 关键词匹配（权重 +50）
+  - `name` 模糊匹配（权重 +5）
+  - 得分 > 30 才触发
+
+**验证指南**：`packages/agent/verification/19-skills.md`（补充测试用例）
+
+### [ ] T-28：types.ts ReflectionState 新增字段
+
+**文件**：`packages/agent/src/types.ts`
+
+**内容**：
+- `ReflectionState.last_active_at: number` — 最后活跃时间戳（ms）
+- `TaskBufferEntry` 增加 `timestamp` 字段（已有）
+
+**验证指南**：`packages/agent/verification/00-types.md`（补充测试）
+
+### [ ] T-29：config 新增 reflection 配置项
+
+**文件**：`packages/agent/src/config/loader.ts`
+
+**内容**：
+- `reflection.idle_timeout: number` — 空闲触发阈值，默认 30000ms
+- `reflection.max_buffer_size: number` — TaskBuffer 上限，默认 50
+
+**验证指南**：`packages/agent/verification/01-config.md`（补充测试）
 
 ---
 

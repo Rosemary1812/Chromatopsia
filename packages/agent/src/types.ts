@@ -161,6 +161,7 @@ export interface ReflectionState {
   task_buffer: TaskBufferEntry[];
   trigger_count: number;
   last_task_type: string | null;
+  last_active_at: number; // 最后活跃时间戳（ms），用于 idle 检测
 }
 
 export interface SynthesisResult {

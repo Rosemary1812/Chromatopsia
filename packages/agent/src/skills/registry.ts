@@ -29,6 +29,52 @@ export class SkillRegistry {
     );
   }
 
+  /**
+   * 按用户输入匹配 Skill。
+   * 检查 trigger_pattern（正则，权重+100）、trigger_condition（关键词，权重+50）、
+   * name（模糊，权重+5），得分 > 30 才触发。
+   */
+  trigger_match(input: string): Skill | null {
+    const q = input.toLowerCase();
+    let best: Skill | null = null;
+    let bestScore = 0;
+
+    for (const skill of this.skills.values()) {
+      let score = 0;
+
+      // 1. trigger_pattern 正则匹配（权重最高）
+      if (skill.trigger_pattern) {
+        try {
+          const re = new RegExp(skill.trigger_pattern, 'i');
+          if (re.test(input)) score += 100;
+        } catch {
+          // 无效正则，跳过
+        }
+      }
+
+      // 2. trigger_condition 关键词匹配
+      if (skill.trigger_condition) {
+        const tc = skill.trigger_condition.toLowerCase();
+        if (q.includes(tc)) score += 50;
+        // 关键词重叠计数
+        const words = tc.split(/\s+/);
+        for (const w of words) {
+          if (w.length > 2 && q.includes(w)) score += 10;
+        }
+      }
+
+      // 3. name 匹配
+      if (skill.name.toLowerCase().includes(q)) score += 5;
+
+      if (score > bestScore) {
+        bestScore = score;
+        best = skill;
+      }
+    }
+
+    return bestScore > 30 ? best : null;
+  }
+
   update(id: string, patch: Partial<Skill>): void {
     const skill = this.skills.get(id);
     if (!skill) return;

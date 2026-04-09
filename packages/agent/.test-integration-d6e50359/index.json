@@ -1,0 +1,39 @@
+{
+  "sessions": [
+    {
+      "session_id": "4a10519f-qyyf-mnr506qu",
+      "working_directory": "/workspace/test",
+      "created_at": 1775718597415,
+      "last_active": 1775718597415,
+      "message_count": 0
+    },
+    {
+      "session_id": "85ddd23c-swr5-mnr506qz",
+      "working_directory": "/workspace/myapp",
+      "created_at": 1775718597420,
+      "last_active": 1775718597420,
+      "message_count": 0
+    },
+    {
+      "session_id": "4a10519f-x66k-mnr506r1",
+      "working_directory": "/workspace/test",
+      "created_at": 1775718597422,
+      "last_active": 1775718597422,
+      "message_count": 0
+    },
+    {
+      "session_id": "4a10519f-ux14-mnr506r5",
+      "working_directory": "/workspace/test",
+      "created_at": 1775718597426,
+      "last_active": 1775718597426,
+      "message_count": 0
+    },
+    {
+      "session_id": "4a10519f-rz8b-mnr506r7",
+      "working_directory": "/workspace/test",
+      "created_at": 1775718597428,
+      "last_active": 1775718597428,
+      "message_count": 0
+    }
+  ]
+}
