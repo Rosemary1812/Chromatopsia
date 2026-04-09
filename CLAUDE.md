@@ -64,28 +64,34 @@ When NOT to use: simple fixes, high-certainty tasks, or work that is faster to d
 ```
 Chromatopsia/
 ├── packages/
-│   ├── agent/           # Agent 层代码（TypeScript，monorepo 核心包）
-│   │   ├── src/
-│   │   │   ├── llm/        # LLM Provider 抽象 + Anthropic/OpenAI
-│   │   │   ├── tools/      # Registry + 执行器 + 7个内置工具
-│   │   │   ├── session/    # Manager + Context + History + Summarizer
-│   │   │   ├── memory/     # Storage + Retriever + Injector
-│   │   │   ├── skills/     # Registry + Patcher
-│   │   │   ├── hooks/      # Approval + Logging + CostTracking
-│   │   │   ├── repl/       # Loop + Reflection + Slash + Ink 组件
-│   │   │   ├── config/     # YAML 配置加载
-│   │   │   ├── types.ts    # 全局类型定义
-│   │   │   └── index.ts    # 导出入口
-│   │   ├── tests/          # 测试
-│   │   └── package.json
+│   ├── agent/           # Agent 核心（纯库，无 UI 依赖）
+│   │   └── src/
+│   │       ├── types.ts    # 全局类型定义
+│   │       ├── index.ts    # 导出入口
+│   │       ├── llm/        # LLM Provider（Anthropic / OpenAI）
+│   │       ├── tools/      # Tool 系统（Registry + 7个内置工具 + 执行器）
+│   │       ├── session/    # Session 管理（Manager + History + Context + Summarizer）
+│   │       ├── memory/     # 跨会话记忆（Storage + Retriever + Injector）
+│   │       ├── skills/     # 自学习层（Registry + Patcher）
+│   │       ├── hooks/      # Tool Hooks（Approval + Logging + CostTracking）
+│   │       ├── repl/       # REPL 核心（Loop + Reflection + Executor）
+│   │       └── config/     # YAML 配置加载
 │   │
-│   └── ui-shell/       # 外围基建层代码（Tauri/Electron + React）
-│       ├── src/
-│       │   ├── canvas/      # 无限画布
-│       │   ├── floating/    # 悬浮窗
-│       │   ├── sidebar/     # 侧边栏
-│       │   └── voice/       # 语音输入
-│       └── package.json
+│   ├── terminal/         # 终端 REPL（Ink TUI，依赖 agent）
+│   │   └── src/
+│   │       ├── index.ts
+│   │       └── repl/
+│   │           ├── slash.ts      # 斜杠命令系统
+│   │           ├── components/    # Ink 组件
+│   │           └── utils/         # Markdown → Ink 转换
+│   │
+│   └── canvas/           # 无限画布基建（外围设施）
+│       └── src/
+│           ├── canvas/     # 无限画布渲染
+│           ├── floating/   # 悬浮球
+│           ├── sidebar/    # 侧边栏（文件树/Diff/MD）
+│           ├── voice/      # 语音输入
+│           └── components/ # 共享 UI 组件
 │
 ├── Program/             # 设计文档（不放代码）
 │   ├── agent/
@@ -102,6 +108,7 @@ Chromatopsia/
 ## 开发原则
 
 1. **Agent 核心先行** — Phase 1 专注于 Agent 调通，TUI/画布是后话
-2. **packages/agent 是纯库** — 无 UI 依赖，可以独立测试；ui-shell 依赖它
-3. **设计文档在 Program/** — 代码在 packages/，文档在 Program/，职责分离
-4. **从 Phase 1 开始** — 先实现 LLM Provider + Tool 系统，再逐步推进
+2. **packages/agent 是纯库** — 无 UI 依赖，可以独立测试；terminal 和 canvas 都依赖它
+3. **terminal 是 REPL UI 层** — Ink TUI，依赖 agent；不包含业务逻辑
+4. **设计文档在 Program/** — 代码在 packages/，文档在 Program/，职责分离
+5. **从 Phase 1 开始** — 先实现 LLM Provider + Tool 系统，再逐步推进

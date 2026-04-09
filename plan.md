@@ -191,7 +191,7 @@
 
 ## Phase 5：Memory + Skills（3 个任务，可并行）
 
-### [ ] T-18：memory/storage.ts 记忆持久化
+### [x] T-18：memory/storage.ts 记忆持久化
 
 **文件**：`packages/agent/src/memory/storage.ts`
 
@@ -199,7 +199,7 @@
 
 **验证指南**：`packages/agent/verification/18-memory-storage.md`
 
-### [ ] T-19：skills/registry.ts + skills/patcher.ts 技能系统
+### [x] T-19：skills/registry.ts + skills/patcher.ts 技能系统
 
 **文件**：`packages/agent/src/skills/registry.ts`、`packages/agent/src/skills/patcher.ts`
 
@@ -211,7 +211,7 @@
 
 ## Phase 6：Hooks（1 个任务）
 
-### [ ] T-20：hooks/approval.ts Approval 机制
+### [x] T-20：hooks/approval.ts Approval 机制
 
 **文件**：`packages/agent/src/hooks/approval.ts`
 
@@ -221,9 +221,9 @@
 
 ---
 
-## Phase 7：REPL 核心 + Idle-triggered Reflection + Skill 触发（7 个任务）
+## Phase 7：REPL 核心（4 个任务）
 
-### [ ] T-21：repl/reflection.ts 反思状态机（Idle-triggered 重写）
+### [x] T-21：repl/reflection.ts 反思状态机（Idle-triggered）
 
 **文件**：`packages/agent/src/repl/reflection.ts`
 
@@ -235,15 +235,15 @@
 
 **验证指南**：`packages/agent/verification/21-reflection.md`
 
-### [ ] T-22：repl/slash.ts 斜杠命令系统
+### [x] T-22：repl/slash.ts 斜杠命令系统
 
-**文件**：`packages/agent/src/repl/slash.ts`
+**文件**：`packages/terminal/src/repl/slash.ts`
 
 **内容**：SLASH_COMMANDS 表、handle_slash_command()、/exit /clear /skills /compact /help 等命令
 
 **验证指南**：`packages/agent/verification/22-slash.md`
 
-### [ ] T-23：repl/executor.ts 并行 Tool 执行 + Skill 执行器
+### [x] T-23：repl/executor.ts 并行 Tool 执行 + Skill 执行器
 
 **文件**：`packages/agent/src/repl/executor.ts`
 
@@ -254,7 +254,7 @@
 
 **验证指南**：`packages/agent/verification/23-repl-executor.md`
 
-### [ ] T-24：repl/loop.ts REPL 主循环（完全重写）
+### [x] T-24：repl/loop.ts REPL 主循环
 
 **文件**：`packages/agent/src/repl/loop.ts`
 
@@ -266,39 +266,6 @@
 
 **验证指南**：`packages/agent/verification/24-repl-loop.md`
 
-### [ ] T-27：skills/registry.ts trigger_match() 新增
-
-**文件**：`packages/agent/src/skills/registry.ts`
-
-**内容**：
-- `trigger_match(input: string): Skill | null` — 按用户输入匹配 Skill
-  - `trigger_pattern` 正则匹配（权重 +100）
-  - `trigger_condition` 关键词匹配（权重 +50）
-  - `name` 模糊匹配（权重 +5）
-  - 得分 > 30 才触发
-
-**验证指南**：`packages/agent/verification/19-skills.md`（补充测试用例）
-
-### [ ] T-28：types.ts ReflectionState 新增字段
-
-**文件**：`packages/agent/src/types.ts`
-
-**内容**：
-- `ReflectionState.last_active_at: number` — 最后活跃时间戳（ms）
-- `TaskBufferEntry` 增加 `timestamp` 字段（已有）
-
-**验证指南**：`packages/agent/verification/00-types.md`（补充测试）
-
-### [ ] T-29：config 新增 reflection 配置项
-
-**文件**：`packages/agent/src/config/loader.ts`
-
-**内容**：
-- `reflection.idle_timeout: number` — 空闲触发阈值，默认 30000ms
-- `reflection.max_buffer_size: number` — TaskBuffer 上限，默认 50
-
-**验证指南**：`packages/agent/verification/01-config.md`（补充测试）
-
 ---
 
 ## Phase 8：REPL UI 组件（1 个任务）
@@ -306,18 +273,18 @@
 ### [ ] T-25：repl/components/ + repl/utils/ REPL TUI 组件
 
 **文件**：
-- `packages/agent/src/repl/utils/markdownToInk.ts`
-- `packages/agent/src/repl/components/StreamingOutput.tsx`
-- `packages/agent/src/repl/components/ApprovalModal.tsx`
-- `packages/agent/src/repl/components/ToolProgress.tsx`
-- `packages/agent/src/repl/components/BorderBox.tsx`
-- `packages/agent/src/repl/components/InputPrompt.tsx`
-- `packages/agent/src/repl/components/NotificationBanner.tsx`
-- `packages/agent/src/repl/components/ConversationLog.tsx`
-- `packages/agent/src/repl/components/UserMessage.tsx`
-- `packages/agent/src/repl/components/AssistantMessage.tsx`
-- `packages/agent/src/repl/components/App.tsx`
-- `packages/agent/src/repl/app.tsx`
+- `packages/terminal/src/repl/utils/markdownToInk.ts`
+- `packages/terminal/src/repl/components/StreamingOutput.tsx`
+- `packages/terminal/src/repl/components/ApprovalModal.tsx`
+- `packages/terminal/src/repl/components/ToolProgress.tsx`
+- `packages/terminal/src/repl/components/BorderBox.tsx`
+- `packages/terminal/src/repl/components/InputPrompt.tsx`
+- `packages/terminal/src/repl/components/NotificationBanner.tsx`
+- `packages/terminal/src/repl/components/ConversationLog.tsx`
+- `packages/terminal/src/repl/components/UserMessage.tsx`
+- `packages/terminal/src/repl/components/AssistantMessage.tsx`
+- `packages/terminal/src/repl/components/App.tsx`
+- `packages/terminal/src/repl/app.tsx`
 
 **内容**：Ink TUI 组件、流式 Markdown 渲染、Approval 弹窗、工具状态、整体 App 集成
 
