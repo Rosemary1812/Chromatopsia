@@ -155,7 +155,7 @@
 
 ## Phase 4：Session 层（4 个任务，可并行）
 
-### [ ] T-14：session/history.ts Session 持久化
+### [x] T-14：session/history.ts Session 持久化
 
 **文件**：`packages/agent/src/session/history.ts`
 
@@ -163,7 +163,7 @@
 
 **验证指南**：`packages/agent/verification/14-session-history.md`
 
-### [ ] T-15：session/context.ts 上下文构建管道
+### [x] T-15：session/context.ts 上下文构建管道
 
 **文件**：`packages/agent/src/session/context.ts`
 
@@ -171,7 +171,7 @@
 
 **验证指南**：`packages/agent/verification/15-session-context.md`
 
-### [ ] T-16：session/summarizer.ts 自动压缩
+### [x] T-16：session/summarizer.ts 自动压缩
 
 **文件**：`packages/agent/src/session/summarizer.ts`
 
@@ -179,7 +179,7 @@
 
 **验证指南**：`packages/agent/verification/16-session-summarizer.md`
 
-### [ ] T-17：session/manager.ts Session 管理器
+### [x] T-17：session/manager.ts Session 管理器
 
 **文件**：`packages/agent/src/session/manager.ts`
 
