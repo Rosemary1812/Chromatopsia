@@ -131,14 +131,31 @@ git push -u origin phase{X}
 
 ---
 
-## 分支合并流程
+## 分支合并流程（全程 Terminal）
 
-用户或协调者在验证通过后执行：
+使用 GitHub CLI (`gh`)，无需打开浏览器：
 
 ```bash
-git checkout main
-git merge phase{X}
-git push origin main
+# 1. 推送分支
+git push -u origin phase{X}
+
+# 2. 创建 PR
+gh pr create \
+  --title "feat(agent): implement Phase {X}" \
+  --body "$(cat <<'EOF'
+## Summary
+- {简述实现内容}
+
+## Test plan
+- [ ] pnpm build && pnpm test passes locally
+- [ ] Manual verification by human
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+EOF
+)"
+
+# 3. 合并 PR（squash merge）
+gh pr merge --admin --squash
 ```
 
 **合并后必须更新 `plan.md`**：将对应 Phase 的所有任务 `[ ]` 改为 `[x]`。
