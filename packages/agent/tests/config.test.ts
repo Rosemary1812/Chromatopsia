@@ -103,4 +103,32 @@ approval:
     expect(config.tools?.run_shell?.allowed_commands).toContain('npm');
     expect(config.approval?.auto_approve_safe).toBe(true);
   });
+
+  it('loads reflection config with idle_timeout and max_buffer_size', async () => {
+    const configPath = resolve(TEST_DIR, 'config-reflection.yaml');
+    await writeFile(configPath, `
+provider: anthropic
+anthropic:
+  api_key: sk-ant-key
+reflection:
+  idle_timeout: 60000
+  max_buffer_size: 100
+`);
+    const config = await load_config(configPath);
+    expect(config.reflection?.idle_timeout).toBe(60000);
+    expect(config.reflection?.max_buffer_size).toBe(100);
+  });
+
+  it('applies default reflection values when not specified', async () => {
+    const configPath = resolve(TEST_DIR, 'config-no-reflection.yaml');
+    await writeFile(configPath, `
+provider: anthropic
+anthropic:
+  api_key: sk-ant-key
+`);
+    const config = await load_config(configPath);
+    // Fields are optional; when absent, they should be undefined (not throw)
+    expect(config.reflection?.idle_timeout).toBeUndefined();
+    expect(config.reflection?.max_buffer_size).toBeUndefined();
+  });
 });

@@ -18,10 +18,20 @@ import { rm } from 'fs/promises';
 import { resolve } from 'path';
 import { randomUUID } from 'crypto';
 import { SessionManager } from '../../src/session/manager.js';
-import type { Message } from '../../src/types.js';
+import type { Message, LLMProvider } from '../../src/types.js';
 
 function make_test_dir() {
   return resolve(process.cwd(), '.test-mgr-' + randomUUID().slice(0, 8));
+}
+
+/** Creates a mock LLMProvider that throws on chat() to force compress_session fallback to truncate */
+function createMockProvider(): LLMProvider {
+  return {
+    name: 'mock',
+    chat: async () => { throw new Error('mock provider — forces truncate fallback'); },
+    chat_stream: async function* () { throw new Error('mock provider'); },
+    get_model: () => 'mock-model',
+  };
 }
 
 describe('SessionManager', () => {
@@ -30,7 +40,7 @@ describe('SessionManager', () => {
     let manager: SessionManager;
 
     beforeEach(async () => {
-      manager = new SessionManager(dir);
+      manager = new SessionManager(dir, createMockProvider());
     });
 
     afterEach(async () => {
@@ -70,7 +80,7 @@ describe('SessionManager', () => {
     let manager: SessionManager;
 
     beforeEach(async () => {
-      manager = new SessionManager(dir);
+      manager = new SessionManager(dir, createMockProvider());
     });
 
     afterEach(async () => {
@@ -106,32 +116,35 @@ describe('SessionManager', () => {
     let manager: SessionManager;
 
     beforeEach(async () => {
-      manager = new SessionManager(dir);
+      manager = new SessionManager(dir, createMockProvider());
     });
 
     afterEach(async () => {
       await rm(dir, { recursive: true, force: true });
     });
 
-    it('sets last_compact_metadata on the session', () => {
+    it('sets last_compact_metadata on the session', async () => {
       const s = manager.create_session('/tmp/project-compact');
       for (let i = 0; i < 30; i++) {
         s.add_message({ role: 'user', content: `message ${i}`.padEnd(200, ' ') });
       }
       const before_compact = s.messages.length;
-      s.compact();
+      await s.compact();
       expect(s.messages.length).toBeLessThan(before_compact);
       expect(s.last_compact_metadata).toBeDefined();
+      // Mock provider throws → falls back to truncate
       expect(s.last_compact_metadata!.type).toBe('truncate');
       expect(s.last_compact_metadata!.original_count).toBe(before_compact);
     });
 
-    it('does nothing if session has few messages', () => {
+    it('does nothing if session has few messages', async () => {
       const s = manager.create_session('/tmp/project-few');
       s.add_message({ role: 'user', content: 'short' });
-      s.compact();
+      await s.compact();
       expect(s.messages).toHaveLength(1);
-      expect(s.last_compact_metadata).toBeUndefined();
+      // < min_summarizable=6 → truncate without calling LLM
+      expect(s.last_compact_metadata).toBeDefined();
+      expect(s.last_compact_metadata!.type).toBe('truncate');
     });
   });
 
@@ -140,7 +153,7 @@ describe('SessionManager', () => {
     let manager: SessionManager;
 
     beforeEach(async () => {
-      manager = new SessionManager(dir);
+      manager = new SessionManager(dir, createMockProvider());
     });
 
     afterEach(async () => {
@@ -172,7 +185,7 @@ describe('SessionManager', () => {
     });
 
     it('creates new session when no active sessions exist', async () => {
-      const manager = new SessionManager(dir);
+      const manager = new SessionManager(dir, createMockProvider());
       const result = await manager.recover_or_prompt('/tmp/new-project');
       expect(result.recovered).toBe(false);
       expect('session' in result);
@@ -180,12 +193,12 @@ describe('SessionManager', () => {
     });
 
     it('recovers a single active session', async () => {
-      const m1 = new SessionManager(dir);
+      const m1 = new SessionManager(dir, createMockProvider());
       const original = m1.create_session('/tmp/recoverable');
       original.add_message({ role: 'user', content: 'prior message' });
       const originalId = original.id;
 
-      const m2 = new SessionManager(dir);
+      const m2 = new SessionManager(dir, createMockProvider());
       const result = await m2.recover_or_prompt('/tmp/recoverable');
       expect(result.recovered).toBe(true);
       expect('session' in result);
@@ -194,13 +207,13 @@ describe('SessionManager', () => {
     });
 
     it('returns multiple candidates when multiple sessions exist', async () => {
-      const m1 = new SessionManager(dir);
+      const m1 = new SessionManager(dir, createMockProvider());
       const s1 = m1.create_session('/tmp/multi-1');
       s1.add_message({ role: 'user', content: 'session 1' });
       const s2 = m1.create_session('/tmp/multi-2');
       s2.add_message({ role: 'user', content: 'session 2' });
 
-      const m2 = new SessionManager(dir);
+      const m2 = new SessionManager(dir, createMockProvider());
       const result = await m2.recover_or_prompt('/tmp/multi-1');
       if ('candidates' in result) {
         expect(result.candidates.length).toBeGreaterThanOrEqual(1);
@@ -216,7 +229,7 @@ describe('SessionManager', () => {
     });
 
     it('lists all active sessions', async () => {
-      const manager = new SessionManager(dir);
+      const manager = new SessionManager(dir, createMockProvider());
       manager.create_session('/tmp/proj1');
       manager.create_session('/tmp/proj2');
       const sessions = await manager.list_active_sessions();
@@ -224,7 +237,7 @@ describe('SessionManager', () => {
     });
 
     it('excludes archived sessions', async () => {
-      const manager = new SessionManager(dir);
+      const manager = new SessionManager(dir, createMockProvider());
       const s1 = manager.create_session('/tmp/keep');
       const s2 = manager.create_session('/tmp/remove');
       await manager.archive_session(s2.id);
@@ -239,7 +252,7 @@ describe('SessionManager', () => {
     let manager: SessionManager;
 
     beforeEach(async () => {
-      manager = new SessionManager(dir);
+      manager = new SessionManager(dir, createMockProvider());
     });
 
     afterEach(async () => {
@@ -265,7 +278,7 @@ describe('SessionManager', () => {
     let manager: SessionManager;
 
     beforeEach(async () => {
-      manager = new SessionManager(dir);
+      manager = new SessionManager(dir, createMockProvider());
     });
 
     afterEach(async () => {

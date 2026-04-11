@@ -1,7 +1,7 @@
 // T-20: hooks/approval.ts Approval 机制
 import { randomUUID } from 'crypto';
-import type { ApprovalRequest, ApprovalResponse } from '../types.js';
-import { registry } from '../tools/registry.js';
+import type { ApprovalRequest, ApprovalResponse } from '../foundation/types.js';
+import { registry } from '../foundation/tools/registry.js';
 
 // ============================================================
 // Dangerous Pattern Detection

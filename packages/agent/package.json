@@ -15,7 +15,7 @@
     "build": "tsc",
     "test": "vitest run",
     "test:watch": "vitest",
-    "dev": "tsx src/repl/app.tsx",
+    "dev": "pnpm --filter @chromatopsia/cli run cli",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

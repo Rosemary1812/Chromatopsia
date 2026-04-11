@@ -6,13 +6,38 @@
  */
 
 import { readFile } from 'fs/promises';
-import { resolve } from 'path';
+import { resolve, dirname } from 'path';
 import { parse } from 'yaml';
 import { existsSync } from 'fs';
-import type { AppConfig } from '../types.js';
+import type { AppConfig } from '../foundation/types.js';
 
 /** 匹配 YAML 中的 `${VAR_NAME}` 环境变量占位符 */
 const ENV_VAR_PATTERN = /\$\{([^}]+)\}/g;
+
+/**
+ * 加载 .env 文件，将变量注入 process.env。
+ * 从 config.yaml 同级目录查找 .env 文件。
+ */
+async function load_env_file(filePath: string): Promise<void> {
+  const envPath = resolve(dirname(filePath), '.env');
+  if (!existsSync(envPath)) return;
+
+  const raw = await readFile(envPath, 'utf-8');
+  for (const line of raw.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const eqIdx = trimmed.indexOf('=');
+    if (eqIdx === -1) continue;
+    const key = trimmed.slice(0, eqIdx).trim();
+    let value = trimmed.slice(eqIdx + 1).trim();
+    // 去除首尾引号
+    if ((value.startsWith('"') && value.endsWith('"')) ||
+        (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1);
+    }
+    if (key) process.env[key] = value;
+  }
+}
 
 /**
  * 递归遍历 YAML 对象，替换所有字符串值中的 `${VAR}` 占位符。
@@ -57,6 +82,9 @@ export async function load_config(configPath?: string): Promise<AppConfig> {
   if (!existsSync(filePath)) {
     throw new Error(`Config file not found: ${filePath}`);
   }
+
+  // 在 config.yaml 同级目录查找 .env
+  await load_env_file(filePath);
 
   const raw = await readFile(filePath, 'utf-8');
   const parsed = parse(raw) as Record<string, unknown>;

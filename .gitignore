@@ -26,3 +26,19 @@ build/
 
 # Claude Code
 .claude/cache/
+.claude.json
+.claude/settings.local.json
+.agents/
+.codex/
+
+# CLI session logs
+packages/cli/*.jsonl
+packages/cli/node_modules/
+packages/cli/dist/
+
+# Session & workspace state
+index.json
+workspace.termcanvas
+
+# Personal notes (do not commit)
+chat-bug.md

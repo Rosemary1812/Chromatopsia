@@ -17,14 +17,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { registry } from '../../src/tools/registry.js';
+import { register_all_tools } from '../../src/tools/index.js';
 import { execute_tool, execute_tool_calls_parallel } from '../../src/tools/executor.js';
-import { read_definition } from '../../src/tools/read.js';
-import { edit_definition } from '../../src/tools/edit.js';
-import { glob_definition } from '../../src/tools/glob.js';
-import { grep_definition } from '../../src/tools/grep.js';
-import { run_shell_definition } from '../../src/tools/bash.js';
-import { websearch_definition } from '../../src/tools/websearch.js';
-import { webfetch_definition } from '../../src/tools/webfetch.js';
 import type { ToolCall, ToolContext } from '../../src/types.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -83,13 +77,7 @@ function makeContext(): ToolContext {
 // ============================================================
 
 function registerAllTools(): void {
-  registry.register(read_definition);
-  registry.register(edit_definition);
-  registry.register(glob_definition);
-  registry.register(grep_definition);
-  registry.register(run_shell_definition);
-  registry.register(websearch_definition);
-  registry.register(webfetch_definition);
+  register_all_tools();
 
   const all = registry.get_all();
   const dangerous = registry.get_dangerous();

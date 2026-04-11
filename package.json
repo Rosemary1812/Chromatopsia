@@ -5,9 +5,11 @@
   "description": "Chromatopsia - Multi-project parallel Agent development canvas",
   "scripts": {
     "build:agent": "pnpm --filter @chromatopsia/agent build",
-    "build:ui": "pnpm --filter @chromatopsia/ui-shell build",
+    "build:cli": "pnpm --filter @chromatopsia/cli build",
+    "build:canvas": "pnpm --filter @chromatopsia/canvas build",
     "dev:agent": "pnpm --filter @chromatopsia/agent dev",
-    "dev:ui": "pnpm --filter @chromatopsia/ui-shell dev",
+    "dev:cli": "pnpm --filter @chromatopsia/cli dev",
+    "dev:canvas": "pnpm --filter @chromatopsia/canvas dev",
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck"
   },

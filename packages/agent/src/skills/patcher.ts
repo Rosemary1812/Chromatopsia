@@ -1,4 +1,4 @@
-import type { Skill, TaskBufferEntry } from '../types.js';
+import type { Skill, TaskBufferEntry } from '../foundation/types.js';
 
 export interface PatchAnalysis {
   new_pitfalls: string[];

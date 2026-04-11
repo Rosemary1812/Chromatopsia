@@ -1,7 +1,7 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
-import type { Skill } from '../types';
+import type { Skill } from '../foundation/types';
 
 const CHROMATOPSIA_DIR = '.chromatopsia';
 const SKILLS_FILE = 'skills.json';

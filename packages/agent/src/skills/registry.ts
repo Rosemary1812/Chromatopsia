@@ -1,4 +1,4 @@
-import type { Skill } from '../types.js';
+import type { Skill } from '../foundation/types.js';
 
 export class SkillRegistry {
   private skills = new Map<string, Skill>(); // id → Skill

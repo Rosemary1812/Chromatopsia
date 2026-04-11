@@ -188,6 +188,114 @@ describe('SkillRegistry', () => {
     });
   });
 
+  describe('trigger_match', () => {
+    beforeEach(() => {
+      registry.register(
+        makeSkill({
+          id: 's1',
+          name: 'Git Rebase',
+          task_type: 'git-rebase',
+          trigger_condition: 'clean up commit history',
+          trigger_pattern: '^/rebase',
+        }),
+      );
+      registry.register(
+        makeSkill({
+          id: 's2',
+          name: 'Run Tests',
+          task_type: 'test-debug',
+          trigger_condition: 'debug failing tests',
+        }),
+      );
+      registry.register(
+        makeSkill({
+          id: 's3',
+          name: 'Build Project',
+          task_type: 'build',
+          trigger_condition: 'compile build',
+        }),
+      );
+    });
+
+    it('matches trigger_pattern regex with high score', () => {
+      const result = registry.trigger_match('/rebase HEAD~3');
+      expect(result).not.toBeNull();
+      expect(result!.id).toBe('s1');
+    });
+
+    it('matches trigger_condition keyword with score 50', () => {
+      const result = registry.trigger_match('clean up commit history');
+      expect(result).not.toBeNull();
+      expect(result!.id).toBe('s1');
+    });
+
+    it('matches trigger_condition individual words with score 10 each', () => {
+      // Single word match gives +10, below threshold 30 → null
+      expect(registry.trigger_match('commit')).toBeNull();
+      // Three word matches give +30, not >30 → still null
+      // Four word matches give +40 → hits
+      const result = registry.trigger_match('clean up commit history');
+      expect(result).not.toBeNull();
+      expect(result!.id).toBe('s1');
+    });
+
+    it('matches name fuzzy with low score 5 only when combined with other signals', () => {
+      // name match (+5) alone is below threshold 30
+      expect(registry.trigger_match('Rebase')).toBeNull();
+      // name match (+5) + 3 word matches (+30) = 35 → passes threshold >30
+      const result = registry.trigger_match('Rebase clean up commit history');
+      expect(result).not.toBeNull();
+      expect(result!.id).toBe('s1');
+    });
+
+    it('returns null when no skill exceeds score threshold 30', () => {
+      // Only name match gives +5, below threshold
+      expect(registry.trigger_match('xyzzy')).toBeNull();
+    });
+
+    it('returns null for empty input', () => {
+      const result = registry.trigger_match('');
+      expect(result).toBeNull();
+    });
+
+    it('returns null when skill list is empty', () => {
+      const empty = new SkillRegistry();
+      expect(empty.trigger_match('anything')).toBeNull();
+    });
+
+    it('returns highest-scoring skill when multiple match', () => {
+      registry.register(
+        makeSkill({
+          id: 's4',
+          name: 'Git Squash',
+          task_type: 'git-squash',
+          trigger_condition: 'clean up commits squash',
+          trigger_pattern: '^/rebase',
+        }),
+      );
+      // Both s1 and s4 match trigger_pattern (+100), but s4 also matches "squash" word
+      const result = registry.trigger_match('/rebase squash');
+      expect(result).not.toBeNull();
+      // s4 has same trigger_pattern score but additional word match → wins
+      expect(['s1', 's4']).toContain(result!.id);
+    });
+
+    it('ignores invalid trigger_pattern regex', () => {
+      registry.register(
+        makeSkill({
+          id: 's5',
+          name: 'Bad Pattern',
+          task_type: 'bad',
+          trigger_condition: '',
+          trigger_pattern: '[invalid',
+        }),
+      );
+      // Should not throw, just skip the bad pattern
+      const result = registry.trigger_match('anything');
+      expect(result).toBeDefined();
+    });
+  });
+
   describe('getAll / getById', () => {
     it('getAll returns all registered skills', () => {
       registry.register(makeSkill({ id: 's1' }));

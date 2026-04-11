@@ -1,0 +1,48 @@
+# Chromatopsia Agent 配置
+# 复制为 config.yaml 并填入你的 API Key
+
+provider: anthropic
+
+anthropic:
+  api_key: ${ANTHROPIC_API_KEY}
+  base_url: ${ANTHROPIC_BASE_URL}
+  model: claude-opus-4-6
+  max_tokens: 8192
+
+openai:
+  api_key: ${OPENAI_API_KEY}
+  base_url: https://api.openai.com/v1
+  model: gpt-4o
+
+# Tool 沙箱配置
+tools:
+  run_shell:
+    allowed_commands:
+      - git
+      - npm
+      - pnpm
+      - npx
+      - node
+      - tsc
+      - tsx
+      - cargo
+    denied_patterns:
+      - rm -rf /
+      - format c:
+
+# Approval Hook 配置
+approval:
+  auto_approve_safe: true
+  timeout_seconds: 300
+
+# Session 上下文压缩
+session:
+  max_history_tokens: 4500
+  compress_threshold: 4500
+
+# Reflection 自学习配置
+reflection:
+  enabled: true
+  threshold: 3           # 连续 3 次同类操作后触发反思
+  idle_timeout: 30000    # 空闲 30 秒后触发 idle 反思
+  max_buffer_size: 50
