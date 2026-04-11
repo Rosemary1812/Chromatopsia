@@ -1,7 +1,7 @@
 // T-13: WebFetch Tool tests
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { webfetch_definition } from '../../src/tools/webfetch.js';
-import type { ToolContext } from '../../src/types.js';
+import { webfetch_definition } from '../../src/foundation/tools/webfetch.js';
+import type { ToolContext } from '../../src/foundation/types.js';
 
 describe('webfetch tool', () => {
   describe('webfetch_definition', () => {

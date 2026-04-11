@@ -5,9 +5,9 @@ import {
   resolve_path,
   sandbox_bash_command,
   DENIED_PATTERNS,
-} from '../../src/tools/executor.js';
-import { registry } from '../../src/tools/registry.js';
-import type { ToolCall, ToolContext } from '../../src/types.js';
+} from '../../src/foundation/tools/executor.js';
+import { registry } from '../../src/foundation/tools/registry.js';
+import type { ToolCall, ToolContext } from '../../src/foundation/types.js';
 import { z } from 'zod';
 import path from 'node:path';
 

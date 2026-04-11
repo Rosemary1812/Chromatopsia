@@ -5,7 +5,7 @@
  * 1. build_system_prompt — 带/不带 project_context、user_context
  * 2. build_skill_injection — 格式正确，包含 steps/pitfalls/verification
  * 3. build_related_skills_injection — 最多 3 个，截断多余
- * 4. format_recent_messages — 仅 user/assistant，限制条数
+ * 4. (format_recent_messages removed — logic inlined into build_llm_context)
  * 5. build_llm_context — system + skill + recent 三段组合正确
  * 6. LLMContext 方法 — appendChunk / finalizeStream / finishAssistantMessage
  * 7. 无 skill 匹配时：走 fuzzy_match 路径
@@ -17,10 +17,9 @@ import {
   build_system_prompt,
   build_skill_injection,
   build_related_skills_injection,
-  format_recent_messages,
   build_llm_context,
-} from '../../src/session/context.js';
-import type { Session, Skill } from '../../src/types.js';
+} from '../../src/agent/session/context.js';
+import type { Session, Skill } from '../../src/foundation/types.js';
 import type { SkillRegistry } from '../../src/skills/registry.js';
 
 // ----------------------------------------------------------------
@@ -62,8 +61,10 @@ function makeSkill(overrides: Partial<Skill> = {}): Skill {
 function makeSkillReg(): SkillRegistry {
   return {
     register: vi.fn(),
+    register_manifest: vi.fn(),
     match: vi.fn().mockReturnValue(null),
     fuzzy_match: vi.fn().mockReturnValue([]),
+    build_directory_listing: vi.fn().mockReturnValue(''),
     list: vi.fn(),
     show: vi.fn(),
     delete: vi.fn(),
@@ -191,40 +192,6 @@ describe('build_related_skills_injection', () => {
   });
 });
 
-describe('format_recent_messages', () => {
-  it('returns empty string for empty messages', () => {
-    expect(format_recent_messages([])).toBe('');
-  });
-
-  it('includes only user and assistant messages', () => {
-    const messages = [
-      { role: 'user' as const, content: 'hello' },
-      { role: 'tool' as const, content: 'tool result', tool_call_id: 'tc1', tool_results: [] },
-      { role: 'assistant' as const, content: 'hi' },
-    ];
-    const block = format_recent_messages(messages);
-    expect(block).toContain('用户：hello');
-    expect(block).toContain('助手：hi');
-    expect(block).not.toContain('tool');
-  });
-
-  it('limits to last N messages', () => {
-    const messages = Array.from({ length: 30 }, (_, i) => ({
-      role: 'user' as const,
-      content: `msg${i}`,
-    }));
-    const block = format_recent_messages(messages, 5);
-    expect(block).toContain('msg25'); // 0-indexed, last 5 are 25-29
-    expect(block).not.toContain('msg0');
-    expect(block).not.toContain('msg24');
-  });
-
-  it('adds header', () => {
-    const messages = [{ role: 'user' as const, content: 'hello' }];
-    const block = format_recent_messages(messages);
-    expect(block).toContain('【对话历史】');
-  });
-});
 
 describe('build_llm_context', () => {
   it('returns LLMContext with messages array', () => {

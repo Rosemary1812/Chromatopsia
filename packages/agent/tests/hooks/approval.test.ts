@@ -1,8 +1,8 @@
 // T-20: hooks/approval.ts ApprovalHook tests
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ApprovalHook } from '../../src/hooks/approval.js';
-import { ToolRegistry, registry } from '../../src/tools/registry.js';
-import type { ToolDefinition } from '../../src/types.js';
+import { ToolRegistry, registry } from '../../src/foundation/tools/registry.js';
+import type { ToolDefinition } from '../../src/foundation/types.js';
 
 // Helper to register a tool with a specific danger level
 function registerTool(name: string, dangerLevel: 'safe' | 'warning' | 'dangerous'): void {

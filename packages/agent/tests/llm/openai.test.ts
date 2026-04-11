@@ -14,8 +14,8 @@ vi.mock('openai', () => {
   };
 });
 
-import { OpenAIProvider } from '../../src/llm/openai.js';
-import type { Message, ToolDefinition, ProviderConfig } from '../../src/types.js';
+import { OpenAIProvider } from '../../src/foundation/llm/openai.js';
+import type { Message, ToolDefinition, ProviderConfig } from '../../src/foundation/types.js';
 
 describe('OpenAIProvider', () => {
   const baseConfig: ProviderConfig = {

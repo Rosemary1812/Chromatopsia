@@ -1,7 +1,8 @@
-import type { Skill } from '../foundation/types.js';
+import type { Skill, SkillManifestEntry } from '../foundation/types.js';
 
 export class SkillRegistry {
   private skills = new Map<string, Skill>(); // id → Skill
+  private manifest = new Map<string, SkillManifestEntry>(); // id → SkillManifestEntry
   private by_type = new Map<string, Skill[]>(); // task_type → Skill[]
 
   register(skill: Skill): void {
@@ -14,6 +15,10 @@ export class SkillRegistry {
       list.push(skill);
     }
     this.by_type.set(skill.task_type, list);
+  }
+
+  register_manifest(entry: SkillManifestEntry): void {
+    this.manifest.set(entry.id, entry);
   }
 
   match(task_type: string): Skill | null {
@@ -85,6 +90,13 @@ export class SkillRegistry {
       const idx = list.findIndex((s) => s.id === id);
       if (idx !== -1) list[idx] = updated;
     }
+    const manifest = this.manifest.get(id);
+    if (manifest) {
+      manifest.name = updated.name;
+      manifest.task_type = updated.task_type;
+      manifest.updated_at = new Date(updated.updated_at).toISOString();
+      manifest.trigger_pattern = updated.trigger_pattern;
+    }
   }
 
   list(): void {
@@ -109,6 +121,7 @@ export class SkillRegistry {
     const skill = [...this.skills.values()].find((s) => s.name === name);
     if (!skill) return;
     this.skills.delete(skill.id);
+    this.manifest.delete(skill.id);
     const list = this.by_type.get(skill.task_type);
     if (list) {
       const filtered = list.filter((s) => s.id !== skill.id);
@@ -137,5 +150,24 @@ export class SkillRegistry {
 
   getById(id: string): Skill | undefined {
     return this.skills.get(id);
+  }
+
+  getManifest(): SkillManifestEntry[] {
+    return [...this.manifest.values()].sort((a, b) => {
+      if (a.priority !== b.priority) return b.priority - a.priority;
+      return a.name.localeCompare(b.name);
+    });
+  }
+
+  build_directory_listing(): string {
+    const entries = this.getManifest().filter((e) => e.enabled);
+    if (entries.length === 0) return '';
+    const lines = ['【Skills目录】'];
+    for (const entry of entries) {
+      lines.push(
+        `- id=${entry.id}; name=${entry.name}; path=${entry.source_path}; scope=${entry.scope}; priority=${entry.priority}`,
+      );
+    }
+    return lines.join('\n');
   }
 }

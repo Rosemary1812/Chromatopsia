@@ -1,14 +1,14 @@
 // T-24: tests/repl/loop.test.ts
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import type { LLMProvider, LLMResponse, Session, Message } from '../../src/types.js';
+import type { LLMProvider, LLMResponse, Session, Message } from '../../src/foundation/types.js';
 import { run_repl } from '../../src/repl/loop.js';
-import * as llmIndex from '../../src/llm/index.js';
-import * as sessionModule from '../../src/session/manager.js';
+import * as llmIndex from '../../src/foundation/llm/index.js';
+import * as sessionModule from '../../src/agent/session/manager.js';
 import * as slashModule from '../../src/repl/slash.js';
 import * as executorModule from '../../src/repl/executor.js';
 import * as skillRegistryModule from '../../src/skills/registry.js';
 import * as skillPatcherModule from '../../src/skills/patcher.js';
-import * as memoryStorageModule from '../../src/memory/storage.js';
+import * as skillStoreModule from '../../src/skills/store.js';
 import * as hooksApprovalModule from '../../src/hooks/approval.js';
 
 // ---- Mock session factory ----
@@ -98,6 +98,8 @@ describe('repl/loop — T-24', () => {
         match: vi.fn(() => null),
         fuzzy_match: vi.fn(() => []),
         register: vi.fn(),
+        register_manifest: vi.fn(),
+        build_directory_listing: vi.fn(() => ''),
         list: vi.fn(),
         show: vi.fn(),
         delete: vi.fn(),
@@ -115,10 +117,11 @@ describe('repl/loop — T-24', () => {
         load: vi.fn(async () => {}),
         save: vi.fn(async () => {}),
         getAll: vi.fn(() => []),
+        getManifest: vi.fn(() => []),
         delete: vi.fn(),
         getAllSkills: vi.fn(() => []),
       };
-      vi.spyOn(memoryStorageModule, 'SkillStore').mockReturnValue(mock_skill_store as unknown as memoryStorageModule.SkillStore);
+      vi.spyOn(skillStoreModule, 'SkillStore').mockReturnValue(mock_skill_store as unknown as skillStoreModule.SkillStore);
 
       // Mock ApprovalHook
       vi.spyOn(hooksApprovalModule, 'ApprovalHook').mockImplementation(() => ({
@@ -166,6 +169,8 @@ describe('repl/loop — T-24', () => {
         match: vi.fn(() => null),
         fuzzy_match: vi.fn(() => []),
         register: vi.fn(),
+        register_manifest: vi.fn(),
+        build_directory_listing: vi.fn(() => ''),
         list: vi.fn(),
         show: vi.fn(),
         delete: vi.fn(),
@@ -173,7 +178,7 @@ describe('repl/loop — T-24', () => {
       };
       vi.spyOn(skillRegistryModule, 'SkillRegistry').mockReturnValue(mock_skill_reg as unknown as skillRegistryModule.SkillRegistry);
       vi.spyOn(skillPatcherModule, 'SkillPatcher').mockImplementation(() => ({ patch: vi.fn() } as unknown as skillPatcherModule.SkillPatcher));
-      vi.spyOn(memoryStorageModule, 'SkillStore').mockReturnValue({ load: vi.fn(async () => {}), save: vi.fn(async () => {}), getAll: vi.fn(() => []) } as unknown as memoryStorageModule.SkillStore);
+      vi.spyOn(skillStoreModule, 'SkillStore').mockReturnValue({ load: vi.fn(async () => {}), save: vi.fn(async () => {}), getAll: vi.fn(() => []), getManifest: vi.fn(() => []) } as unknown as skillStoreModule.SkillStore);
       vi.spyOn(hooksApprovalModule, 'ApprovalHook').mockImplementation(() => ({ request_approval: vi.fn(() => null), wait_for_decision: vi.fn(async () => ({ request_id: '', decision: 'approve' as const })), submit_decision: vi.fn() } as unknown as hooksApprovalModule.ApprovalHook));
       vi.spyOn(executorModule, 'execute_tool_calls_parallel').mockResolvedValue([]);
       vi.spyOn(executorModule, 'execute_skill').mockResolvedValue([]);
@@ -209,6 +214,8 @@ describe('repl/loop — T-24', () => {
         match: vi.fn(() => null),
         fuzzy_match: vi.fn(() => []),
         register: vi.fn(),
+        register_manifest: vi.fn(),
+        build_directory_listing: vi.fn(() => ''),
         list: vi.fn(),
         show: vi.fn(),
         delete: vi.fn(),
@@ -216,7 +223,7 @@ describe('repl/loop — T-24', () => {
       };
       vi.spyOn(skillRegistryModule, 'SkillRegistry').mockReturnValue(mock_skill_reg as unknown as skillRegistryModule.SkillRegistry);
       vi.spyOn(skillPatcherModule, 'SkillPatcher').mockImplementation(() => ({ patch: vi.fn() } as unknown as skillPatcherModule.SkillPatcher));
-      vi.spyOn(memoryStorageModule, 'SkillStore').mockReturnValue({ load: vi.fn(async () => {}), save: vi.fn(async () => {}), getAll: vi.fn(() => []) } as unknown as memoryStorageModule.SkillStore);
+      vi.spyOn(skillStoreModule, 'SkillStore').mockReturnValue({ load: vi.fn(async () => {}), save: vi.fn(async () => {}), getAll: vi.fn(() => []), getManifest: vi.fn(() => []) } as unknown as skillStoreModule.SkillStore);
       vi.spyOn(hooksApprovalModule, 'ApprovalHook').mockImplementation(() => ({ request_approval: vi.fn(() => null), wait_for_decision: vi.fn(async () => ({ request_id: '', decision: 'approve' as const })), submit_decision: vi.fn() } as unknown as hooksApprovalModule.ApprovalHook));
       vi.spyOn(slashModule, 'handle_slash_command').mockReturnValue(true); // slash command handled!
       vi.spyOn(executorModule, 'execute_tool_calls_parallel').mockResolvedValue([]);
@@ -253,6 +260,8 @@ describe('repl/loop — T-24', () => {
         match: vi.fn(() => null),
         fuzzy_match: vi.fn(() => []),
         register: vi.fn(),
+        register_manifest: vi.fn(),
+        build_directory_listing: vi.fn(() => ''),
         list: vi.fn(),
         show: vi.fn(),
         delete: vi.fn(),
@@ -260,7 +269,7 @@ describe('repl/loop — T-24', () => {
       };
       vi.spyOn(skillRegistryModule, 'SkillRegistry').mockReturnValue(mock_skill_reg as unknown as skillRegistryModule.SkillRegistry);
       vi.spyOn(skillPatcherModule, 'SkillPatcher').mockImplementation(() => ({ patch: vi.fn() } as unknown as skillPatcherModule.SkillPatcher));
-      vi.spyOn(memoryStorageModule, 'SkillStore').mockReturnValue({ load: vi.fn(async () => {}), save: vi.fn(async () => {}), getAll: vi.fn(() => []) } as unknown as memoryStorageModule.SkillStore);
+      vi.spyOn(skillStoreModule, 'SkillStore').mockReturnValue({ load: vi.fn(async () => {}), save: vi.fn(async () => {}), getAll: vi.fn(() => []), getManifest: vi.fn(() => []) } as unknown as skillStoreModule.SkillStore);
       vi.spyOn(hooksApprovalModule, 'ApprovalHook').mockImplementation(() => ({ request_approval: vi.fn(() => null), wait_for_decision: vi.fn(async () => ({ request_id: '', decision: 'approve' as const })), submit_decision: vi.fn() } as unknown as hooksApprovalModule.ApprovalHook));
       vi.spyOn(executorModule, 'execute_tool_calls_parallel').mockResolvedValue([]);
       vi.spyOn(executorModule, 'execute_skill').mockResolvedValue([]);
@@ -309,6 +318,8 @@ describe('repl/loop — T-24', () => {
         match: vi.fn(() => null),
         fuzzy_match: vi.fn(() => []),
         register: vi.fn(),
+        register_manifest: vi.fn(),
+        build_directory_listing: vi.fn(() => ''),
         list: vi.fn(),
         show: vi.fn(),
         delete: vi.fn(),
@@ -316,7 +327,7 @@ describe('repl/loop — T-24', () => {
       };
       vi.spyOn(skillRegistryModule, 'SkillRegistry').mockReturnValue(mock_skill_reg as unknown as skillRegistryModule.SkillRegistry);
       vi.spyOn(skillPatcherModule, 'SkillPatcher').mockImplementation(() => ({ patch: vi.fn() } as unknown as skillPatcherModule.SkillPatcher));
-      vi.spyOn(memoryStorageModule, 'SkillStore').mockReturnValue({ load: vi.fn(async () => {}), save: vi.fn(async () => {}), getAll: vi.fn(() => []) } as unknown as memoryStorageModule.SkillStore);
+      vi.spyOn(skillStoreModule, 'SkillStore').mockReturnValue({ load: vi.fn(async () => {}), save: vi.fn(async () => {}), getAll: vi.fn(() => []), getManifest: vi.fn(() => []) } as unknown as skillStoreModule.SkillStore);
       vi.spyOn(hooksApprovalModule, 'ApprovalHook').mockImplementation(() => ({ request_approval: vi.fn(() => null), wait_for_decision: vi.fn(async () => ({ request_id: '', decision: 'approve' as const })), submit_decision: vi.fn() } as unknown as hooksApprovalModule.ApprovalHook));
       const execute_skill_spy = vi.spyOn(executorModule, 'execute_skill').mockResolvedValue([{ tool_call_id: 'x', output: 'ok', success: true }]);
       vi.spyOn(slashModule, 'handle_slash_command').mockReturnValue(false);

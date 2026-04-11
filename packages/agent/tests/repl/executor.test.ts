@@ -5,8 +5,8 @@ import {
   execute_skill,
   parse_step_to_tool_call,
 } from '../../src/repl/executor.js';
-import { registry } from '../../src/tools/registry.js';
-import type { ToolCall, ToolContext, Skill } from '../../src/types.js';
+import { registry } from '../../src/foundation/tools/registry.js';
+import type { ToolCall, ToolContext, Skill } from '../../src/foundation/types.js';
 import { ApprovalHook } from '../../src/hooks/approval.js';
 
 const mockSession = {

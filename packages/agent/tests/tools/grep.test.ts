@@ -1,7 +1,7 @@
 // T-11: Grep Tool tests
 import { describe, it, expect } from 'vitest';
-import { grep_definition } from '../../src/tools/grep.js';
-import type { ToolContext } from '../../src/types.js';
+import { grep_definition } from '../../src/foundation/tools/grep.js';
+import type { ToolContext } from '../../src/foundation/types.js';
 import { writeFile, unlink, mkdir, rmdir } from 'node:fs/promises';
 import path from 'node:path';
 

@@ -1,7 +1,7 @@
 // T-10: Edit Tool tests
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { edit_definition } from '../../src/tools/edit.js';
-import type { ToolContext } from '../../src/types.js';
+import { edit_definition } from '../../src/foundation/tools/edit.js';
+import type { ToolContext } from '../../src/foundation/types.js';
 import { writeFile, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { createProvider, type ProviderType } from '../../src/llm/index.js';
-import type { ProviderConfig } from '../../src/types.js';
+import { createProvider, type ProviderType } from '../../src/foundation/llm/index.js';
+import type { ProviderConfig } from '../../src/foundation/types.js';
 
 describe('createProvider', () => {
   const mockConfig: ProviderConfig = {

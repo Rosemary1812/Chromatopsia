@@ -5,8 +5,8 @@ import {
   needs_compression,
   build_summarize_prompt,
   DEFAULT_COMPRESSION_CONFIG,
-} from '../../src/session/summarizer.js';
-import type { Message, LLMProvider, CompressionConfig } from '../../src/types.js';
+} from '../../src/agent/session/summarizer.js';
+import type { Message, LLMProvider, CompressionConfig } from '../../src/foundation/types.js';
 
 // Mock LLM Provider
 function createMockProvider(summary: string): LLMProvider {

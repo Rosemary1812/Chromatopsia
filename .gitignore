@@ -31,8 +31,9 @@ build/
 .agents/
 .codex/
 
-# CLI session logs
+# CLI & agent session logs
 packages/cli/*.jsonl
+*.jsonl
 packages/cli/node_modules/
 packages/cli/dist/
 
@@ -42,3 +43,6 @@ workspace.termcanvas
 
 # Personal notes (do not commit)
 chat-bug.md
+Memory 重构.md
+Reflection 重构.md
+Skill 重构.md

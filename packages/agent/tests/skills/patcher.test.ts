@@ -12,7 +12,7 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { SkillPatcher } from '../../src/skills/patcher.js';
-import type { Skill, TaskBufferEntry, ToolResult } from '../../src/types.js';
+import type { Skill, TaskBufferEntry, ToolResult } from '../../src/foundation/types.js';
 
 const makeSkill = (overrides: Partial<Skill> = {}): Skill => ({
   id: 'skill-001',

@@ -14,7 +14,7 @@ import {
   summarize_task_buffer,
   parse_synthesis_result,
 } from '../../src/repl/reflection.js';
-import type { ReflectionState, TaskBufferEntry } from '../../src/types.js';
+import type { ReflectionState, TaskBufferEntry } from '../../src/foundation/types.js';
 
 const makeEntry = (task_type: string, tool_names: string[]): TaskBufferEntry => ({
   tool_calls: tool_names.map((name, i) => ({ id: `tc-${i}`, name, arguments: {} })),

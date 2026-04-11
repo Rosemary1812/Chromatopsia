@@ -12,8 +12,8 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { ToolRegistry } from '../../src/tools/registry.js';
-import type { ToolDefinition } from '../../src/types.js';
+import { ToolRegistry } from '../../src/foundation/tools/registry.js';
+import type { ToolDefinition } from '../../src/foundation/types.js';
 
 function makeTool(name: string, dangerLevel?: 'safe' | 'warning' | 'dangerous'): ToolDefinition {
   return {

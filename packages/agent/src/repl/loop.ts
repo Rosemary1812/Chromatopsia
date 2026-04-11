@@ -15,7 +15,7 @@ import { SessionManager } from '../agent/session/manager.js';
 import { build_llm_context } from '../agent/session/context.js';
 import { SkillRegistry } from '../skills/registry.js';
 import { SkillPatcher } from '../skills/patcher.js';
-import { SkillStore } from '../memory/storage.js';
+import { SkillStore } from '../skills/store.js';
 import { ApprovalHook } from '../hooks/approval.js';
 import { registry } from '../foundation/tools/registry.js';
 import { register_all_tools } from '../foundation/tools/index.js';
@@ -34,6 +34,12 @@ import {
 } from './reflection.js';
 import { createProvider } from '../foundation/llm/index.js';
 import { needs_compression, DEFAULT_COMPRESSION_CONFIG } from '../agent/session/summarizer.js';
+import { MemoryIndexStore } from '../memory/index-store.js';
+import { MemoryTopicStore } from '../memory/topic-store.js';
+import { buildMemoryInjection } from '../memory/injector.js';
+import { maybeWriteMemory } from '../memory/writer.js';
+import * as os from 'node:os';
+import * as path from 'node:path';
 
 // ------------------------------------------------------------
 // Types
@@ -146,9 +152,15 @@ export async function run_repl(options: ReplOptions): Promise<RunReplResult> {
   const skill_patcher = new SkillPatcher();
   const skill_store = new SkillStore();
   const approval_hook = new ApprovalHook();
+  const memoryDir = path.join(os.homedir(), '.chromatopsia', 'memory');
+  const memoryIndexStore = new MemoryIndexStore(memoryDir);
+  const memoryTopicStore = new MemoryTopicStore(memoryDir);
 
   // Load persisted skills into registry
   await skill_store.load();
+  for (const entry of skill_store.getManifest()) {
+    skill_reg.register_manifest(entry);
+  }
   for (const skill of skill_store.getAll()) {
     skill_reg.register(skill);
   }
@@ -221,16 +233,34 @@ export async function run_repl(options: ReplOptions): Promise<RunReplResult> {
         role: 'assistant',
         content: `Executed skill: ${matched_skill.name} (${results.length} steps)`,
       });
+      try {
+        await maybeWriteMemory(trimmed, session, provider, memoryIndexStore, memoryTopicStore);
+      } catch {
+        // best-effort memory write
+      }
       emit('onTurnComplete', `Executed skill: ${matched_skill.name}`);
       return;
     }
 
     // Normal turn: LLM → tool execution loop
+    let memorySystemMessages: import('../foundation/types.js').Message[] = [];
+    try {
+      const memoryInjection = await buildMemoryInjection(trimmed, memoryIndexStore, memoryTopicStore);
+      memorySystemMessages = memoryInjection.systemMessages;
+    } catch {
+      // best-effort memory injection
+      memorySystemMessages = [];
+    }
     await handle_normal_turn(
       trimmed, session, provider, skill_reg, skill_patcher, skill_store,
       approval_hook, tool_context, reflection, reflection_threshold,
-      isDebug, emit,
+      isDebug, emit, memorySystemMessages,
     );
+    try {
+      await maybeWriteMemory(trimmed, session, provider, memoryIndexStore, memoryTopicStore);
+    } catch {
+      // best-effort memory write
+    }
   }
 
   // ------------------------------------------------------------
@@ -340,6 +370,7 @@ async function handle_normal_turn(
   reflection_threshold: number,
   isDebug: boolean,
   emit: <K extends keyof AgentEvents>(event: K, ...args: Parameters<NonNullable<AgentEvents[K]>>) => void,
+  extra_system_messages: import('../foundation/types.js').Message[] = [],
 ): Promise<void> {
   const task_type = infer_task_type(input);
   const MAX_TOOL_ROUNDS = 16;
@@ -350,7 +381,7 @@ async function handle_normal_turn(
   let lastToolOutputSignature = '';
 
   // Build initial LLM context
-  let ctx = build_llm_context(session, task_type, null, skill_reg);
+  let ctx = build_llm_context(session, task_type, null, skill_reg, extra_system_messages);
 
   // Tool execution loop
   while (true) {

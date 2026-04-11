@@ -104,6 +104,7 @@ export function build_llm_context(
   task_type: string,
   matched_skill: Skill | null,
   skill_reg: SkillRegistry,
+  extra_system_messages: Message[] = [],
 ): LLMContext {
   const chunks: string[] = [];
   let capturedToolCalls: import('../../foundation/types.js').ToolCall[] = [];
@@ -114,8 +115,17 @@ export function build_llm_context(
   // 1. System prompt
   const system_prompt = build_system_prompt(session);
   messages.push({ role: 'system', content: system_prompt });
+  for (const msg of extra_system_messages) {
+    if (msg.role === 'system') {
+      messages.push({ role: 'system', content: msg.content });
+    }
+  }
 
   // 2. Skill injection
+  const directoryListing = skill_reg.build_directory_listing();
+  if (directoryListing) {
+    messages.push({ role: 'system', content: directoryListing });
+  }
   if (matched_skill) {
     const skill_block = build_skill_injection(matched_skill);
     messages.push({ role: 'system', content: skill_block });

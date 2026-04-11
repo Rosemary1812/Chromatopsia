@@ -17,17 +17,17 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import { resolve } from 'path';
 import { randomUUID } from 'crypto';
 import { rm, readFileSync } from 'fs/promises';
-import { AnthropicProvider } from '../../src/llm/anthropic.js';
-import { SessionManager } from '../../src/session/manager.js';
-import { build_llm_context, build_system_prompt } from '../../src/session/context.js';
+import { AnthropicProvider } from '../../src/foundation/llm/anthropic.js';
+import { SessionManager } from '../../src/agent/session/manager.js';
+import { build_llm_context, build_system_prompt } from '../../src/agent/session/context.js';
 import {
   compress_session,
   compress_session_recursive,
   build_summarize_prompt,
   needs_compression,
   DEFAULT_COMPRESSION_CONFIG,
-} from '../../src/session/summarizer.js';
-import type { Message, Skill, CompressionConfig } from '../../src/types.js';
+} from '../../src/agent/session/summarizer.js';
+import type { Message, Skill, CompressionConfig } from '../../src/foundation/types.js';
 
 // 加载项目根目录的 .env 文件
 const envPath = resolve(process.cwd(), '../../.env');
@@ -132,6 +132,7 @@ const mockSkillReg = {
   list: () => mockSkills,
   show: (name: string) => mockSkills.find((s) => s.name === name),
   delete: () => {},
+  build_directory_listing: () => '',
 };
 
 // ============================================================

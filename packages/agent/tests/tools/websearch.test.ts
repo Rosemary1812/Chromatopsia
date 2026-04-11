@@ -1,7 +1,7 @@
 // T-12: WebSearch Tool tests
 import { describe, it, expect } from 'vitest';
-import { websearch_definition } from '../../src/tools/websearch.js';
-import type { ToolContext } from '../../src/types.js';
+import { websearch_definition } from '../../src/foundation/tools/websearch.js';
+import type { ToolContext } from '../../src/foundation/types.js';
 
 describe('websearch tool', () => {
   const mockContext: ToolContext = {

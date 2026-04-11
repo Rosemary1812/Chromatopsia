@@ -148,6 +148,33 @@ export interface Skill {
   is_stale?: boolean;
 }
 
+export type SkillScope = 'builtin' | 'user' | 'project' | 'reflection';
+
+export interface SkillManifestEntry {
+  id: string;
+  name: string;
+  description: string;
+  triggers: string[];
+  trigger_pattern?: string;
+  task_type: string;
+  scope: SkillScope;
+  enabled: boolean;
+  priority: number;
+  version: number;
+  updated_at: string;
+  source_path: string;
+}
+
+export type MemoryType = 'user' | 'feedback' | 'project' | 'reference';
+
+export interface MemoryIndexEntry {
+  name: string;
+  file: string;
+  description: string;
+  type?: MemoryType;
+  updated_at?: string;
+}
+
 export interface TaskBufferEntry {
   tool_calls: ToolCall[];
   tool_results: ToolResult[];

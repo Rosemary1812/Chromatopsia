@@ -1,7 +1,7 @@
 // T-11: Glob Tool tests
 import { describe, it, expect } from 'vitest';
-import { glob_definition } from '../../src/tools/glob.js';
-import type { ToolContext } from '../../src/types.js';
+import { glob_definition } from '../../src/foundation/tools/glob.js';
+import type { ToolContext } from '../../src/foundation/types.js';
 import { writeFile, unlink, mkdir, rmdir } from 'node:fs/promises';
 import path from 'node:path';
 

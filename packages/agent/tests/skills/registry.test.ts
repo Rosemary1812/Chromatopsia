@@ -13,7 +13,7 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { SkillRegistry } from '../../src/skills/registry.js';
-import type { Skill } from '../../src/types.js';
+import type { Skill } from '../../src/foundation/types.js';
 
 const makeSkill = (overrides: Partial<Skill> = {}): Skill => ({
   id: 'skill-001',

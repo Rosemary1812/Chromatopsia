@@ -1,7 +1,7 @@
 // T-08: Bash Tool tests
 import { describe, it, expect, beforeEach } from 'vitest';
-import { sandbox_bash_command, run_shell_definition } from '../../src/tools/bash.js';
-import type { ToolContext } from '../../src/types.js';
+import { sandbox_bash_command, run_shell_definition } from '../../src/foundation/tools/bash.js';
+import type { ToolContext } from '../../src/foundation/types.js';
 
 describe('bash tool', () => {
   describe('sandbox_bash_command', () => {
