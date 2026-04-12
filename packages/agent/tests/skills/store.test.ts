@@ -136,4 +136,28 @@ success_count: 0
     await store.load();
     expect(store.getAll().some((s) => s.id === 'manual')).toBe(true);
   });
+
+  it('supports draft save/list/approve/reject workflow', async () => {
+    const store = new SkillStore(TEST_DIR);
+    const draft = makeSkill({ id: 'draft-1', name: 'Draft Skill' });
+    await store.save_draft(draft);
+
+    const drafts = store.list_drafts();
+    expect(drafts.some((d) => d.id === 'draft-1')).toBe(true);
+    expect(store.getManifest().find((m) => m.id === 'draft-1')?.scope).toBe('learning_draft');
+
+    const approved = await store.approve_draft('draft-1');
+    expect(approved?.id).toBe('draft-1');
+
+    const reloaded = new SkillStore(TEST_DIR);
+    await reloaded.load();
+    const manifest = reloaded.getManifest().find((m) => m.id === 'draft-1');
+    expect(manifest?.scope).toBe('user');
+    expect(manifest?.enabled).toBe(true);
+
+    await reloaded.save_draft(makeSkill({ id: 'draft-2', name: 'Draft Reject' }));
+    const rejected = await reloaded.reject_draft('draft-2');
+    expect(rejected).toBe(true);
+    expect(reloaded.list_drafts().some((d) => d.id === 'draft-2')).toBe(false);
+  });
 });

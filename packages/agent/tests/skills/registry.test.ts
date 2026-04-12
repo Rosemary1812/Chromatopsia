@@ -294,6 +294,30 @@ describe('SkillRegistry', () => {
       const result = registry.trigger_match('anything');
       expect(result).toBeDefined();
     });
+
+    it('skips learning draft skills in trigger_match', () => {
+      const draft = makeSkill({
+        id: 'draft-s1',
+        name: 'Draft Skill',
+        task_type: 'draft-task',
+        trigger_condition: 'draft only',
+      });
+      registry.register_manifest({
+        id: draft.id,
+        name: draft.name,
+        description: draft.trigger_condition,
+        triggers: [draft.trigger_condition],
+        task_type: draft.task_type,
+        scope: 'learning_draft',
+        enabled: false,
+        priority: 10,
+        version: 1,
+        updated_at: new Date().toISOString(),
+        source_path: '.chromatopsia/skills/drafts/draft-s1.md',
+      });
+      registry.register(draft);
+      expect(registry.trigger_match('draft only')).toBeNull();
+    });
   });
 
   describe('getAll / getById', () => {

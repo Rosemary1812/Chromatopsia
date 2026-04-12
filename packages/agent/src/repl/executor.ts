@@ -1,84 +1,9 @@
 // T-23: repl/executor.ts — Parallel Tool Execution + Skill Executor
 import { randomUUID } from 'crypto';
 import type { ToolCall, ToolResult, ToolContext, Skill } from '../foundation/types.js';
-import { execute_tool } from '../foundation/tools/executor.js';
+import { execute_tool_calls_parallel } from '../foundation/tools/executor.js';
 import { ApprovalHook } from '../hooks/approval.js';
-import { SkillPatcher } from '../skills/patcher.js';
-
-/**
- * Execute tool calls with parallel safe execution and serial guarded execution.
- * Dangerous/warning tools are gated through ApprovalHook.
- *
- * @param tool_calls - Array of tool calls to execute
- * @param context - Tool execution context
- * @param approvalHook - Optional ApprovalHook instance; if not provided, dangerous tools execute without approval
- * @returns Array of tool results, matching the order of tool_calls
- */
-export async function execute_tool_calls_parallel(
-  tool_calls: ToolCall[],
-  context: ToolContext,
-  approvalHook?: ApprovalHook,
-): Promise<ToolResult[]> {
-  if (tool_calls.length === 0) {
-    return [];
-  }
-
-  const safe: ToolCall[] = [];
-  const guarded: ToolCall[] = [];
-
-  for (const tc of tool_calls) {
-    // If we have an approval hook, use it to classify; otherwise use registry danger_level
-    if (approvalHook) {
-      const request = approvalHook.request_approval(tc.name, tc.arguments, 'tool execution');
-      if (request === null) {
-        safe.push(tc);
-      } else {
-        guarded.push(tc);
-      }
-    } else {
-      // No approval hook — fall back to danger level check
-      safe.push(tc);
-    }
-  }
-
-  // safe tools: parallel
-  const safeResults = await Promise.all(safe.map((tc) => execute_tool(tc, context)));
-
-  // guarded tools: serial with approval
-  const guardedResults: ToolResult[] = [];
-  for (const tc of guarded) {
-    if (!approvalHook) {
-      // No approval hook available — execute anyway (dangerous!)
-      guardedResults.push(await execute_tool(tc, context));
-      continue;
-    }
-
-    const request = approvalHook.request_approval(tc.name, tc.arguments, 'tool execution');
-    if (!request) {
-      // Auto-approved
-      guardedResults.push(await execute_tool(tc, context));
-    } else {
-      // Request approval
-      const decision = await approvalHook.wait_for_decision(request.id);
-      if (decision.decision === 'reject') {
-        guardedResults.push({
-          tool_call_id: tc.id,
-          output: `Approval rejected for ${tc.name}`,
-          success: false,
-        });
-      } else if (decision.decision === 'edit' && decision.modified_args) {
-        // Execute with modified args
-        const modifiedTc: ToolCall = { ...tc, arguments: decision.modified_args };
-        guardedResults.push(await execute_tool(modifiedTc, context));
-      } else {
-        // Approved — execute
-        guardedResults.push(await execute_tool(tc, context));
-      }
-    }
-  }
-
-  return [...safeResults, ...guardedResults];
-}
+export { execute_tool_calls_parallel } from '../foundation/tools/executor.js';
 
 /**
  * Parse a step string into a ToolCall.
@@ -150,7 +75,6 @@ export function parse_step_to_tool_call(step: string, session_id: string): ToolC
 
 /**
  * Execute a skill by running each step as a tool call.
- * On failure, calls SkillPatcher.patch() to update the skill.
  *
  * @param skill - Skill to execute
  * @param context - Tool execution context
@@ -162,9 +86,7 @@ export async function execute_skill(
   context: ToolContext,
   approvalHook?: ApprovalHook,
 ): Promise<ToolResult[]> {
-  const patcher = new SkillPatcher();
   const results: ToolResult[] = [];
-  const failed_buffer = [];
 
   for (let i = 0; i < skill.steps.length; i++) {
     const step = skill.steps[i];
@@ -176,34 +98,12 @@ export async function execute_skill(
         output: `Failed to parse step ${i + 1}: ${step}`,
         success: false,
       });
-      failed_buffer.push({
-        tool_calls: [{ id: `step-${i}`, name: 'unknown', arguments: {} }],
-        tool_results: [results[results.length - 1]],
-        task_type: skill.task_type,
-        session_id: context.session.id,
-        timestamp: Date.now(),
-      });
       continue;
     }
 
     const result = await execute_tool_calls_parallel([tool_call], context, approvalHook);
     const tool_result = result[0];
     results.push(tool_result);
-
-    if (!tool_result.success) {
-      failed_buffer.push({
-        tool_calls: [tool_call],
-        tool_results: [tool_result],
-        task_type: skill.task_type,
-        session_id: context.session.id,
-        timestamp: Date.now(),
-      });
-    }
-  }
-
-  // If any step failed, patch the skill
-  if (failed_buffer.length > 0) {
-    await patcher.patch(skill, failed_buffer);
   }
 
   return results;

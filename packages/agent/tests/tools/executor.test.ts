@@ -8,6 +8,7 @@ import {
 } from '../../src/foundation/tools/executor.js';
 import { registry } from '../../src/foundation/tools/registry.js';
 import type { ToolCall, ToolContext } from '../../src/foundation/types.js';
+import { ApprovalHook } from '../../src/hooks/approval.js';
 import { z } from 'zod';
 import path from 'node:path';
 
@@ -304,5 +305,34 @@ describe('execute_tool_calls_parallel', () => {
     const dangerousResult = results.find((r) => r.output === 'dangerous');
     expect(safeResult).toBeDefined();
     expect(dangerousResult).toBeDefined();
+  });
+
+  it('should use approval handler for dangerous tools when provided', async () => {
+    const approvalHook = new ApprovalHook();
+    const requestSpy = vi.spyOn(approvalHook, 'request_approval');
+    const waitSpy = vi.spyOn(approvalHook, 'wait_for_decision');
+
+    registry.register({
+      name: 'dangerous_with_approval',
+      description: 'Dangerous tool with approval',
+      input_schema: { type: 'object' },
+      danger_level: 'dangerous',
+      handler: async () => ({ tool_call_id: 'tc-danger', output: 'danger', success: true }),
+    });
+
+    const results = await execute_tool_calls_parallel(
+      [{ id: 'tc-danger', name: 'dangerous_with_approval', arguments: {} }],
+      mockContext,
+      approvalHook,
+      async (request) => ({
+        request_id: request.id,
+        decision: 'approve',
+      }),
+    );
+
+    expect(requestSpy).toHaveBeenCalledTimes(1);
+    expect(waitSpy).not.toHaveBeenCalled();
+    expect(results).toHaveLength(1);
+    expect(results[0].success).toBe(true);
   });
 });

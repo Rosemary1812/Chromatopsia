@@ -7,7 +7,8 @@ export type { ReplOptions, RunReplResult } from './repl/loop.js';
 export { createProvider } from './foundation/llm/index.js';
 export { ToolRegistry, registry } from './foundation/tools/registry.js';
 export { register_all_tools } from './foundation/tools/index.js';
-export { execute_tool, execute_tool_calls_parallel } from './foundation/tools/executor.js';
+export { execute_tool } from './foundation/tools/executor.js';
+export { execute_tool_calls_parallel } from './repl/executor.js';
 export { SessionManager } from './agent/session/manager.js';
 export { SessionHistory } from './agent/session/history.js';
 export { ApprovalHook } from './hooks/approval.js';
@@ -17,6 +18,8 @@ export { MemoryTopicStore } from './memory/topic-store.js';
 export { buildMemoryInjection } from './memory/injector.js';
 export { maybeWriteMemory } from './memory/writer.js';
 export { decideMemoryWrite, buildMemoryDecisionPrompt } from './memory/decider.js';
+export { TurnEventStore } from './learning/turn-event-store.js';
+export { LearningWorker } from './learning/worker.js';
 export { load_config } from './config/loader.js';
 
 // Additional re-exports for convenience (counted separately in verification)

@@ -6,6 +6,10 @@ export class SkillRegistry {
   private by_type = new Map<string, Skill[]>(); // task_type → Skill[]
 
   register(skill: Skill): void {
+    const manifest = this.manifest.get(skill.id);
+    if (manifest && (!manifest.enabled || manifest.scope === 'learning_draft')) {
+      return;
+    }
     this.skills.set(skill.id, skill);
     const list = this.by_type.get(skill.task_type) ?? [];
     const existingIdx = list.findIndex((s) => s.id === skill.id);
@@ -45,6 +49,10 @@ export class SkillRegistry {
     let bestScore = 0;
 
     for (const skill of this.skills.values()) {
+      const manifest = this.manifest.get(skill.id);
+      if (manifest && (!manifest.enabled || manifest.scope === 'learning_draft')) {
+        continue;
+      }
       let score = 0;
 
       // 1. trigger_pattern 正则匹配（权重最高）

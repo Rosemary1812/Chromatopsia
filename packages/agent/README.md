@@ -38,15 +38,17 @@ packages/agent/
 │   │   └── storage.ts             # SkillStore（跨会话持久化，JSON 文件）
 │   ├── skills/
 │   │   ├── registry.ts            # SkillRegistry（技能匹配/管理）
-│   │   └── patcher.ts             # SkillPatcher（失败自动校准）
 │   ├── hooks/
 │   │   └── approval.ts           # ApprovalHook（危险操作审批）
 │   ├── repl/
-│   │   ├── loop.ts               # REPL 主循环（双状态机）
+│   │   ├── loop.ts               # REPL 主循环
 │   │   ├── executor.ts           # REPL 层并行执行 + Skill 执行器
-│   │   ├── reflection.ts         # 反思状态机（技能合成）
 │   │   ├── slash.ts              # 斜杠命令存根
 │   │   └── app.ts                # CLI 入口
+│   ├── learning/
+│   │   ├── worker.ts             # 离线学习调度器
+│   │   ├── synthesis.ts          # Skill 合成与解析
+│   │   └── turn-event-store.ts   # 学习事件持久化
 │   └── config/
 │       └── loader.ts             # YAML 配置加载 + 环境变量替换
 ├── tests/                        # 单元测试（vitest）
@@ -128,32 +130,28 @@ packages/agent/
 - `trigger_match` 权重：正则 +100，关键词 +50，单词 +10，name +5，阈值 >30
 - 支持注册/更新/删除/列出/搜索
 
-**SkillPatcher**：
-- 执行失败时分析错误模式，追加 pitfalls，修正 steps
-- 支持 git、权限、冲突、超时等常见错误类型
-
 **SkillStore**：
 - 持久化到 `~/.chromatopsia/skills.json`
 - 启动时全量加载，内存 Map 缓存
 
-### 6. 反思机制（`repl/reflection.ts`）
+### 6. 离线自学习（`learning/`）
 
-- **Idle 触发**：用户空闲 30s 后检查 TaskBuffer
-- **连续操作触发**：同类操作连续 N 次无 skill 命中
-- LLM Synthesis：分析操作序列，生成新 Skill（JSON）
-- 反思流程：观察 → 归类 → 合成 → 持久化
+- `TurnEventStore` 按 session 持久化学习事件和批次计数
+- `LearningWorker` 在 turn 完成后异步调度学习，不阻塞主对话
+- `learning/synthesis.ts` 负责分析近期操作序列并生成 Skill 草稿
+- 草稿先以 `learning_draft` 形式落盘，等待 `/skill review|approve|reject`
 
 ### 7. REPL 主循环（`repl/loop.ts`）
 
-**双状态机**：
-- **Normal 状态**：用户输入 → Skill 前置匹配 → LLM → 工具执行 → 循环
-- **Reflection 状态**：TaskBuffer 累积 → LLM Synthesis → 生成 Skill
+**主循环 + 离线学习**：
+- **在线主循环**：用户输入 → Skill 前置匹配 → LLM → 工具执行 → 循环
+- **离线学习**：turn 完成后记录事件，达到批次阈值时生成 Skill 草稿
 
 **执行策略**：
 - 用户输入先 `trigger_match()`，命中则跳过 LLM 直接执行 Skill
 - 工具执行：`safe` 并行，`warning/dangerous` 串行 + 审批
-- TaskBuffer 自动记录，每次 `compact()` 检查是否需要压缩
-- Idle 超时后触发反思，生成技能并持久化
+- turn 结束后异步记录学习事件，不阻塞当前回复
+- 达到批次阈值后生成 Skill draft，并通过 `/skill` 命令人工审核
 
 ### 8. 配置加载（`config/loader.ts`）
 
@@ -179,25 +177,21 @@ packages/agent/
 ```
 用户输入
     ↓
-REPL Loop（双状态机）
+REPL Loop
     ├→ Skill 前置匹配（trigger_match）
     │      ↓ 命中 → execute_skill() → 返回
     │
-    └→ Normal 状态
+    └→ 在线处理
            ↓
        LLM (chat_stream)
            ↓
        Tool Executor（safe 并行 / guarded 串行）
            ↓
-       TaskBuffer 记录
-           ↓
-       反思检查（连续次数 / idle 超时）
-           ↓
-       Synthesis → 新 Skill → 持久化
-           ↓
-       循环直到 LLM 输出文本
-           ↓
        Session 追加消息 → JSONL 持久化
+           ↓
+       LearningWorker 记录 TurnEvent
+           ↓
+       达到 batch 阈值 → Synthesis → Skill draft → 人工审核
 ```
 
 ### 依赖关系
@@ -212,7 +206,8 @@ skills/                ← 依赖 types.ts
 memory/                ← 依赖 types.ts
 hooks/approval.ts      ← 依赖 types.ts, tools/registry
 repl/executor.ts       ← 依赖 types.ts, tools/, hooks/, skills/
-repl/reflection.ts     ← 依赖 types.ts, skills/
+learning/synthesis.ts ← 依赖 types.ts, skills/
+learning/worker.ts    ← 依赖 types.ts, session/, skills/, learning/synthesis.ts
 repl/loop.ts           ← 依赖以上所有模块
 repl/app.ts            ← CLI 入口，依赖 repl/loop.ts, config/
 index.ts               ← 统一导出
@@ -255,11 +250,10 @@ session:
   preserve_recent: 4
   min_summarizable: 6
 
-reflection:
+learning:
   enabled: true
-  threshold: 3
-  idle_timeout: 30000
-  max_buffer_size: 50
+  batch_turns: 20
+  min_confidence: 0.75
 ```
 
 ### 技术栈

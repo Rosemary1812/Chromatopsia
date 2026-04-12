@@ -40,6 +40,17 @@ packages/cli/dist/
 # Session & workspace state
 index.json
 workspace.termcanvas
+.termcanvas/
+
+# Agent integration test artifacts
+packages/agent/.test-integration-*/
+
+# Canvas session state
+packages/canvas/*.jsonl
+packages/canvas/index.json
+packages/canvas/.termcanvas/
+packages/canvas/dist/
+packages/canvas/node_modules/
 
 # Personal notes (do not commit)
 chat-bug.md

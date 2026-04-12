@@ -11,6 +11,7 @@
 import { run_repl, load_config } from '@chromatopsia/agent';
 import { resolve } from 'node:path';
 import * as readline from 'node:readline';
+import type { ApprovalRequest, ApprovalResponse } from '@chromatopsia/agent';
 
 async function main() {
   // CLI 跑在 packages/cli/，config 在 packages/agent/config.yaml
@@ -90,6 +91,48 @@ async function main() {
     }, FLUSH_DELAY_MS);
   }
 
+  async function promptApproval(request: ApprovalRequest): Promise<ApprovalResponse> {
+    flushStreamBuffer(true);
+
+    const preview = Object.entries(request.args)
+      .map(([key, value]) => `${key}=${typeof value === 'string' ? value : JSON.stringify(value)}`)
+      .join(', ');
+
+    printEventLine(`[Approval] ${request.tool_name}`);
+    if (request.context) {
+      printEventLine(`  context: ${request.context}`);
+    }
+    if (preview) {
+      printEventLine(`  args: ${preview}`);
+    }
+
+    return new Promise<ApprovalResponse>((resolve) => {
+      const ask = () => {
+        rl.question('Approve? [y/N]: ', (answer) => {
+          const normalized = answer.trim().toLowerCase();
+          if (normalized === 'y' || normalized === 'yes') {
+            resolve({
+              request_id: request.id,
+              decision: 'approve',
+            });
+            return;
+          }
+          if (normalized === '' || normalized === 'n' || normalized === 'no') {
+            resolve({
+              request_id: request.id,
+              decision: 'reject',
+            });
+            return;
+          }
+          printEventLine('Please answer y or n.');
+          ask();
+        });
+      };
+
+      ask();
+    });
+  }
+
   const { start } = await run_repl({
     working_dir: repoRoot,
     provider: config.provider,
@@ -119,6 +162,8 @@ async function main() {
         flushStreamBuffer(false);
         scheduleFlush();
       },
+
+      onApprovalRequest: promptApproval,
 
       // 本轮对话结束：打印最终回复
       onTurnComplete: (content, toolCalls) => {

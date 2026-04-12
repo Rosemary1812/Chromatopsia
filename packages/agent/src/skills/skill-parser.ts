@@ -107,7 +107,7 @@ function parseListOrSingle(value: string | string[] | undefined): string[] {
 
 function parseScope(value: string | string[] | undefined): SkillScope {
   if (typeof value !== 'string') return 'user';
-  if (value === 'builtin' || value === 'user' || value === 'project' || value === 'reflection') {
+  if (value === 'builtin' || value === 'user' || value === 'project' || value === 'learning_draft') {
     return value;
   }
   return 'user';

@@ -148,7 +148,7 @@ export interface Skill {
   is_stale?: boolean;
 }
 
-export type SkillScope = 'builtin' | 'user' | 'project' | 'reflection';
+export type SkillScope = 'builtin' | 'user' | 'project' | 'learning_draft';
 
 export interface SkillManifestEntry {
   id: string;
@@ -181,14 +181,6 @@ export interface TaskBufferEntry {
   task_type: string;
   session_id: string;
   timestamp: number;
-}
-
-export interface ReflectionState {
-  in_progress: boolean;
-  task_buffer: TaskBufferEntry[];
-  trigger_count: number;
-  last_task_type: string | null;
-  last_active_at: number; // 最后活跃时间戳（ms），用于 idle 检测
 }
 
 export interface SynthesisResult {
@@ -260,12 +252,23 @@ export interface AppConfig {
     max_history_tokens?: number;
     compress_threshold?: number;
   };
-  reflection?: {
-    threshold?: number;
+  learning?: {
     enabled?: boolean;
-    idle_timeout?: number; // 空闲触发阈值（ms），默认 30000
-    max_buffer_size?: number; // TaskBuffer 上限，默认 50
+    batch_turns?: number;
+    min_confidence?: number;
+    reminder?: {
+      enabled?: boolean;
+      max_per_session?: number;
+    };
   };
+}
+
+export interface TurnEvent {
+  id: string;
+  session_id: string;
+  timestamp: number;
+  task_type: string;
+  user_input: string;
 }
 
 // --- Agent Output Events (CLI/TUI implements these) ---
@@ -277,6 +280,9 @@ export interface AppConfig {
 export interface AgentEvents {
   /** LLM stream 每个字符/片段。CLI 可直接 stdout.write(chunk) */
   onStreamChunk?: (chunk: string) => void;
+
+  /** 危险工具请求审批，调用方必须返回审批决定 */
+  onApprovalRequest?: (request: ApprovalRequest) => Promise<ApprovalResponse>;
 
   /** 本轮对话结束（所有 tool_calls 执行完毕后） */
   onTurnComplete?: (content: string, toolCalls?: ToolCall[]) => void;

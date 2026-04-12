@@ -294,6 +294,46 @@ describe('execute_tool_calls_parallel', () => {
 
     expect(capturedArgs).toEqual({ command: 'modified' });
   });
+
+  it('should prefer external approval handler over wait_for_decision', async () => {
+    const approvalHook = new ApprovalHook();
+    let executed = false;
+
+    registry.register({
+      name: 'external_approval_tool',
+      description: 'External approval tool',
+      input_schema: { type: 'object' },
+      danger_level: 'dangerous',
+      handler: async () => {
+        executed = true;
+        return { tool_call_id: 'tc-external', output: 'ok', success: true };
+      },
+    });
+
+    const waitSpy = vi.spyOn(approvalHook, 'wait_for_decision');
+    const requestSpy = vi.spyOn(approvalHook, 'request_approval').mockReturnValue({
+      id: 'req-external',
+      tool_name: 'external_approval_tool',
+      args: {},
+      context: 'tool execution',
+      timestamp: Date.now(),
+    });
+
+    const results = await execute_tool_calls_parallel(
+      [{ id: 'tc-external', name: 'external_approval_tool', arguments: {} }],
+      mockContext,
+      approvalHook,
+      async (request) => ({
+        request_id: request.id,
+        decision: 'approve',
+      }),
+    );
+
+    expect(waitSpy).not.toHaveBeenCalled();
+    expect(requestSpy).toHaveBeenCalledTimes(1);
+    expect(executed).toBe(true);
+    expect(results[0]?.success).toBe(true);
+  });
 });
 
 describe('execute_skill', () => {
@@ -361,7 +401,7 @@ describe('execute_skill', () => {
     expect(results[2].success).toBe(true);  // Read still executed
   });
 
-  it('should call SkillPatcher.patch on failure', async () => {
+  it('should return failed step results without mutating the skill', async () => {
     registry.register({
       name: 'failing_tool',
       description: 'Failing tool',
@@ -386,12 +426,14 @@ describe('execute_skill', () => {
     };
 
     const originalUpdatedAt = skill.updated_at;
+    const originalCallCount = skill.call_count;
 
-    await execute_skill(skill, mockContext);
+    const results = await execute_skill(skill, mockContext);
 
-    // Skill should have been patched (pitfalls updated, call_count incremented)
-    expect(skill.call_count).toBe(1);
-    expect(skill.updated_at).toBeGreaterThanOrEqual(originalUpdatedAt);
+    expect(results).toHaveLength(1);
+    expect(results[0].success).toBe(false);
+    expect(skill.call_count).toBe(originalCallCount);
+    expect(skill.updated_at).toBe(originalUpdatedAt);
   });
 
   it('should parse complex step strings correctly', async () => {

@@ -1,6 +1,6 @@
 // T-24: repl/loop.ts — REPL 主循环
-// 双状态机：Normal（普通执行） / Reflection（技能合成）
-// Skill 前置匹配：每次输入先 trigger_match()，匹配到则执行 Skill 不调 LLM
+// 在线回路只服务用户：Skill 前置匹配 + LLM/tool 执行。
+// 自学习由离线 LearningWorker 处理，不阻塞主对话。
 
 import * as readline from 'node:readline';
 import type {
@@ -12,9 +12,9 @@ import type {
   LogLevel,
 } from '../foundation/types.js';
 import { SessionManager } from '../agent/session/manager.js';
+import type { SessionHistory } from '../agent/session/history.js';
 import { build_llm_context } from '../agent/session/context.js';
 import { SkillRegistry } from '../skills/registry.js';
-import { SkillPatcher } from '../skills/patcher.js';
 import { SkillStore } from '../skills/store.js';
 import { ApprovalHook } from '../hooks/approval.js';
 import { registry } from '../foundation/tools/registry.js';
@@ -22,22 +22,14 @@ import { register_all_tools } from '../foundation/tools/index.js';
 import { execute_tool_calls_parallel } from './executor.js';
 import { execute_skill } from './executor.js';
 import { handle_slash_command as default_slash_handler } from './slash.js';
-import {
-  create_reflection_state,
-  update_last_active,
-  add_to_task_buffer,
-  should_trigger_reflection,
-  reset_reflection,
-  run_idle_reflection,
-  synthesize_skill,
-  start_reflection,
-} from './reflection.js';
 import { createProvider } from '../foundation/llm/index.js';
 import { needs_compression, DEFAULT_COMPRESSION_CONFIG } from '../agent/session/summarizer.js';
 import { MemoryIndexStore } from '../memory/index-store.js';
 import { MemoryTopicStore } from '../memory/topic-store.js';
 import { buildMemoryInjection } from '../memory/injector.js';
 import { maybeWriteMemory } from '../memory/writer.js';
+import { TurnEventStore } from '../learning/turn-event-store.js';
+import { LearningWorker } from '../learning/worker.js';
 import * as os from 'node:os';
 import * as path from 'node:path';
 
@@ -58,7 +50,7 @@ export interface ReplOptions {
     max_tokens?: number;
     timeout?: number;
   };
-  /** Optional app config (for reflection idle_timeout) */
+  /** Optional app config (learning + other runtime settings) */
   app_config?: AppConfig;
   /** Custom readline interface (for testing) */
   readline_interface?: readline.Interface;
@@ -77,21 +69,6 @@ export interface RunReplResult {
   handle_user_input: (input: string) => Promise<void>;
   /** Start the REPL (begins reading input) */
   start: () => Promise<never>;
-}
-
-// ------------------------------------------------------------
-// Constants
-// ------------------------------------------------------------
-
-const DEFAULT_IDLE_TIMEOUT_MS = 30_000;
-const DEFAULT_REFLECTION_THRESHOLD = 3;
-
-// ------------------------------------------------------------
-// Helper: delay promise
-// ------------------------------------------------------------
-
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 // ------------------------------------------------------------
@@ -149,12 +126,12 @@ export async function run_repl(options: ReplOptions): Promise<RunReplResult> {
   const session_manager = new SessionManager(working_dir, provider);
   const session = session_manager.create_session(working_dir);
   const skill_reg = new SkillRegistry();
-  const skill_patcher = new SkillPatcher();
   const skill_store = new SkillStore();
   const approval_hook = new ApprovalHook();
   const memoryDir = path.join(os.homedir(), '.chromatopsia', 'memory');
   const memoryIndexStore = new MemoryIndexStore(memoryDir);
   const memoryTopicStore = new MemoryTopicStore(memoryDir);
+  const turnEventStore = new TurnEventStore();
 
   // Load persisted skills into registry
   await skill_store.load();
@@ -165,17 +142,27 @@ export async function run_repl(options: ReplOptions): Promise<RunReplResult> {
     skill_reg.register(skill);
   }
 
-  // ---- Reflection state (maintained across turns) ----
-  let reflection = create_reflection_state();
-
-  // ---- Configurable thresholds ----
-  const idle_timeout =
-    app_config?.reflection?.enabled === false
-      ? Infinity
-      : app_config?.reflection?.idle_timeout ?? DEFAULT_IDLE_TIMEOUT_MS;
-
-  const reflection_threshold =
-    app_config?.reflection?.threshold ?? DEFAULT_REFLECTION_THRESHOLD;
+  const learningEnabled = app_config?.learning?.enabled !== false;
+  const learningBatchTurns = app_config?.learning?.batch_turns ?? 20;
+  const learningMinConfidence = app_config?.learning?.min_confidence ?? 0.75;
+  const reminderEnabled = app_config?.learning?.reminder?.enabled !== false;
+  const reminderMaxPerSession = app_config?.learning?.reminder?.max_per_session ?? 3;
+  let reminderShown = 0;
+  const historyGetter = (session_manager as unknown as { get_history?: () => SessionHistory }).get_history;
+  const history = typeof historyGetter === 'function'
+    ? historyGetter.call(session_manager)
+    : null;
+  const learningWorker = learningEnabled
+    && history !== null
+    ? new LearningWorker({
+        provider,
+        session,
+        history,
+        skillStore: skill_store,
+        skillRegistry: skill_reg,
+        eventStore: turnEventStore,
+      }, learningBatchTurns, learningMinConfidence)
+    : null;
 
   // ---- Tool context ----
   const tool_context: import('../foundation/types.js').ToolContext = {
@@ -210,8 +197,12 @@ export async function run_repl(options: ReplOptions): Promise<RunReplResult> {
     const trimmed = input.trim();
     if (!trimmed) return;
 
-    update_last_active(reflection);
     session.add_message({ role: 'user', content: trimmed });
+    let turnTaskType = infer_task_type(trimmed);
+
+    if (await handle_learning_command(trimmed)) {
+      return;
+    }
 
     // Slash command handling (before skill matching)
     if (slash_handler(trimmed, session, skill_reg)) {
@@ -221,6 +212,7 @@ export async function run_repl(options: ReplOptions): Promise<RunReplResult> {
     // Skill pre-match: trigger_match() on user input
     const matched_skill = skill_reg.trigger_match(trimmed);
     if (matched_skill) {
+      turnTaskType = matched_skill.task_type;
       const results = await execute_skill(matched_skill, tool_context, approval_hook);
       for (const result of results) {
         if (result.success) {
@@ -239,6 +231,7 @@ export async function run_repl(options: ReplOptions): Promise<RunReplResult> {
         // best-effort memory write
       }
       emit('onTurnComplete', `Executed skill: ${matched_skill.name}`);
+      void maybe_schedule_learning(turnTaskType, trimmed);
       return;
     }
 
@@ -252,19 +245,84 @@ export async function run_repl(options: ReplOptions): Promise<RunReplResult> {
       memorySystemMessages = [];
     }
     await handle_normal_turn(
-      trimmed, session, provider, skill_reg, skill_patcher, skill_store,
-      approval_hook, tool_context, reflection, reflection_threshold,
-      isDebug, emit, memorySystemMessages,
+      trimmed, session, provider, skill_reg, approval_hook, tool_context,
+      isDebug, emit, memorySystemMessages, events,
     );
     try {
       await maybeWriteMemory(trimmed, session, provider, memoryIndexStore, memoryTopicStore);
     } catch {
       // best-effort memory write
     }
+    void maybe_schedule_learning(turnTaskType, trimmed);
+  }
+
+  async function handle_learning_command(input: string): Promise<boolean> {
+    if (!input.startsWith('/skill')) return false;
+    const parts = input.split(/\s+/).filter(Boolean);
+    if (parts.length < 2) return false;
+    const sub = parts[1];
+
+    if (sub === 'review') {
+      const drafts = skill_store.list_drafts();
+      if (drafts.length === 0) {
+        emit('onTurnComplete', 'No draft skills pending review.');
+      } else {
+        const lines = drafts.map((d) => `- ${d.id}: ${d.name} [${d.task_type}]`);
+        emit('onTurnComplete', ['Draft skills pending review:', ...lines].join('\n'));
+      }
+      return true;
+    }
+
+    if ((sub === 'approve' || sub === 'reject') && parts.length >= 3) {
+      const id = parts[2];
+      if (sub === 'approve') {
+        const approved = await skill_store.approve_draft(id);
+        if (!approved) {
+          emit('onTurnComplete', `Draft "${id}" not found.`);
+          return true;
+        }
+        skill_reg.register_manifest({
+          id: approved.id,
+          name: approved.name,
+          description: approved.trigger_condition,
+          triggers: [approved.trigger_condition],
+          trigger_pattern: approved.trigger_pattern,
+          task_type: approved.task_type,
+          scope: 'user',
+          enabled: true,
+          priority: 50,
+          version: 1,
+          updated_at: new Date(approved.updated_at).toISOString(),
+          source_path: `.chromatopsia/skills/user/${approved.id}.md`,
+        });
+        skill_reg.register(approved);
+        emit('onTurnComplete', `Draft approved and published: ${approved.name}`);
+        return true;
+      }
+      const rejected = await skill_store.reject_draft(id);
+      emit('onTurnComplete', rejected ? `Draft rejected: ${id}` : `Draft "${id}" not found.`);
+      return true;
+    }
+
+    return false;
+  }
+
+  async function maybe_schedule_learning(taskType: string, userInput: string): Promise<void> {
+    if (!learningWorker) return;
+    const result = await learningWorker.onTurnCompleted(taskType, userInput);
+    if (result.triggered && result.draftName) {
+      emit('onNotification', `Draft skill generated: ${result.draftName}`);
+    }
+    if (!reminderEnabled || reminderShown >= reminderMaxPerSession) return;
+    const drafts = typeof skill_store.list_drafts === 'function' ? skill_store.list_drafts() : [];
+    if (drafts.length > 0) {
+      reminderShown++;
+      emit('onNotification', `[Learning] ${drafts.length} draft(s) pending review`);
+    }
   }
 
   // ------------------------------------------------------------
-  // Main loop: Promise.race([readline, idle_timeout])
+  // Main loop: strictly input-driven
   // ------------------------------------------------------------
 
   let running = true;
@@ -294,48 +352,13 @@ export async function run_repl(options: ReplOptions): Promise<RunReplResult> {
     emit('onNotification', 'REPL ready. Type /help for commands.');
 
     while (running) {
-      // Race: user input vs idle timeout
-      const input_promise = make_rl_promise();
-      const idle_promise = idle_timeout === Infinity ? new Promise<never>(() => {}) : delay(idle_timeout);
-
-      let result: 'input' | 'idle';
-      let input_value = '';
       try {
-        const winner = await Promise.race([input_promise, idle_promise]);
-        if (typeof winner === 'string') {
-          result = 'input';
-          input_value = winner;
-        } else {
-          result = 'idle';
-        }
+        const input_value = await make_rl_promise();
+        turnPromise = turnPromise.then(() => handle_user_input(input_value));
+        await turnPromise;
       } catch {
         // readline error — exit
         break;
-      }
-
-      if (result === 'input') {
-        // 严格串行：本轮 turn 完成前，不允许进入下一次输入读取
-        turnPromise = turnPromise.then(() => handle_user_input(input_value));
-        await turnPromise;
-      } else {
-        // Idle timeout — 也要等当前 turn 结束
-        await turnPromise;
-        const synthesis = await run_idle_reflection(reflection, idle_timeout);
-        if (synthesis && reflection.task_buffer.length > 0) {
-          // Conditions met: run actual synthesis via LLM
-          const synthesis_result = await synthesize_skill(reflection, provider, skill_reg);
-          if (synthesis_result.skill && Object.keys(synthesis_result.skill).length > 0) {
-            start_reflection(reflection);
-            const new_skill = synthesis_result.skill as import('../foundation/types.js').Skill;
-            await skill_patcher.patch(new_skill, reflection.task_buffer);
-            skill_reg.register(new_skill);
-            await skill_store.save(new_skill);
-            emit('onNotification', `New skill generated: ${new_skill.name}`);
-          }
-        }
-        if (reflection.task_buffer.length > 0) {
-          reflection = reset_reflection(reflection);
-        }
       }
     }
 
@@ -362,15 +385,12 @@ async function handle_normal_turn(
   session: Session,
   provider: LLMProvider,
   skill_reg: SkillRegistry,
-  skill_patcher: SkillPatcher,
-  skill_store: SkillStore,
   approval_hook: ApprovalHook,
   tool_context: import('../foundation/types.js').ToolContext,
-  reflection: import('../foundation/types.js').ReflectionState,
-  reflection_threshold: number,
   isDebug: boolean,
   emit: <K extends keyof AgentEvents>(event: K, ...args: Parameters<NonNullable<AgentEvents[K]>>) => void,
   extra_system_messages: import('../foundation/types.js').Message[] = [],
+  events: AgentEvents = {},
 ): Promise<void> {
   const task_type = infer_task_type(input);
   const MAX_TOOL_ROUNDS = 16;
@@ -489,6 +509,7 @@ async function handle_normal_turn(
       toolCalls,
       tool_context,
       approval_hook,
+      events.onApprovalRequest,
     );
     const toolSignature = JSON.stringify(
       toolCalls.map((tc) => ({ name: tc.name, arguments: tc.arguments })),
@@ -514,30 +535,6 @@ async function handle_normal_turn(
     for (let i = 0; i < toolCalls.length; i++) {
       emit('onToolStart', toolCalls[i]);
       emit('onToolEnd', toolCalls[i], results[i]);
-    }
-
-    // Record in task buffer (for reflection)
-    add_to_task_buffer(reflection, {
-      tool_calls: toolCalls,
-      tool_results: results,
-      task_type,
-      session_id: session.id,
-      timestamp: Date.now(),
-    });
-
-    // Check reflection trigger
-    if (should_trigger_reflection(reflection, task_type, reflection_threshold)) {
-      // Run synthesis
-      const synthesis = await synthesize_skill(reflection, provider, skill_reg);
-      if (synthesis.skill && Object.keys(synthesis.skill).length > 0) {
-        start_reflection(reflection);
-        const new_skill = synthesis.skill as import('../foundation/types.js').Skill;
-        await skill_patcher.patch(new_skill, reflection.task_buffer);
-        skill_reg.register(new_skill);
-        await skill_store.save(new_skill);
-        emit('onNotification', `New skill generated: ${new_skill.name}`);
-      }
-      reflection = reset_reflection(reflection);
     }
 
     // Inject tool results and loop again

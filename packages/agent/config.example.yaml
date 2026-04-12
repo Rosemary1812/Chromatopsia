@@ -40,9 +40,11 @@ session:
   max_history_tokens: 4500
   compress_threshold: 4500
 
-# Reflection 自学习配置
-reflection:
+# Learning（离线自学习）配置
+learning:
   enabled: true
-  threshold: 3           # 连续 3 次同类操作后触发反思
-  idle_timeout: 30000    # 空闲 30 秒后触发 idle 反思
-  max_buffer_size: 50
+  batch_turns: 20
+  min_confidence: 0.75
+  reminder:
+    enabled: true
+    max_per_session: 3

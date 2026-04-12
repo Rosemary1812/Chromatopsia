@@ -104,31 +104,23 @@ approval:
     expect(config.approval?.auto_approve_safe).toBe(true);
   });
 
-  it('loads reflection config with idle_timeout and max_buffer_size', async () => {
-    const configPath = resolve(TEST_DIR, 'config-reflection.yaml');
+  it('loads learning config with batch_turns and reminder', async () => {
+    const configPath = resolve(TEST_DIR, 'config-learning.yaml');
     await writeFile(configPath, `
 provider: anthropic
 anthropic:
   api_key: sk-ant-key
-reflection:
-  idle_timeout: 60000
-  max_buffer_size: 100
+learning:
+  enabled: true
+  batch_turns: 20
+  min_confidence: 0.8
+  reminder:
+    enabled: true
+    max_per_session: 2
 `);
     const config = await load_config(configPath);
-    expect(config.reflection?.idle_timeout).toBe(60000);
-    expect(config.reflection?.max_buffer_size).toBe(100);
-  });
-
-  it('applies default reflection values when not specified', async () => {
-    const configPath = resolve(TEST_DIR, 'config-no-reflection.yaml');
-    await writeFile(configPath, `
-provider: anthropic
-anthropic:
-  api_key: sk-ant-key
-`);
-    const config = await load_config(configPath);
-    // Fields are optional; when absent, they should be undefined (not throw)
-    expect(config.reflection?.idle_timeout).toBeUndefined();
-    expect(config.reflection?.max_buffer_size).toBeUndefined();
+    expect(config.learning?.batch_turns).toBe(20);
+    expect(config.learning?.min_confidence).toBe(0.8);
+    expect(config.learning?.reminder?.max_per_session).toBe(2);
   });
 });

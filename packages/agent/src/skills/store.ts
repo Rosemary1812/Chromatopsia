@@ -65,7 +65,7 @@ export class SkillStore {
     }
 
     await this.#scanRuntimeDirectory(USER_DIR, 'user');
-    await this.#scanRuntimeDirectory(DRAFTS_DIR, 'reflection');
+    await this.#scanRuntimeDirectory(DRAFTS_DIR, 'learning_draft');
 
     // Always merge builtin files if available
     if (this.enableBuiltin) {
@@ -104,6 +104,67 @@ export class SkillStore {
     this.skills.set(skill.id, skill);
     this.manifest.set(skill.id, manifest);
     await this.#writeIndex();
+  }
+
+  async save_draft(skill: Skill): Promise<void> {
+    const manifest: SkillManifestEntry = {
+      id: skill.id,
+      name: skill.name,
+      description: skill.trigger_condition,
+      triggers: [skill.trigger_condition],
+      trigger_pattern: skill.trigger_pattern,
+      task_type: skill.task_type,
+      scope: 'learning_draft',
+      enabled: false,
+      priority: 10,
+      version: 1,
+      updated_at: new Date(skill.updated_at || Date.now()).toISOString(),
+      source_path: normalizePath(path.join(CHROMATOPSIA_DIR, SKILLS_DIR, DRAFTS_DIR, `${skill.id}.md`)),
+    };
+
+    const absolutePath = await this.#resolveManifestPath(manifest.source_path);
+    await fs.mkdir(path.dirname(absolutePath), { recursive: true });
+    const markdown = serializeSkillMarkdown(manifest, skill);
+    await fs.writeFile(absolutePath, markdown, 'utf-8');
+
+    this.skills.set(skill.id, skill);
+    this.manifest.set(skill.id, manifest);
+    await this.#writeIndex();
+  }
+
+  list_drafts(): Skill[] {
+    const out: Skill[] = [];
+    for (const [id, skill] of this.skills.entries()) {
+      const entry = this.manifest.get(id);
+      if (entry?.scope === 'learning_draft') {
+        out.push(skill);
+      }
+    }
+    return out;
+  }
+
+  async approve_draft(id: string): Promise<Skill | null> {
+    const skill = this.skills.get(id);
+    const entry = this.manifest.get(id);
+    if (!skill || !entry || entry.scope !== 'learning_draft') {
+      return null;
+    }
+
+    await this.delete(id);
+    await this.save({
+      ...skill,
+      updated_at: Date.now(),
+    });
+    return this.skills.get(id) ?? null;
+  }
+
+  async reject_draft(id: string): Promise<boolean> {
+    const entry = this.manifest.get(id);
+    if (!entry || entry.scope !== 'learning_draft') {
+      return false;
+    }
+    await this.delete(id);
+    return true;
   }
 
   async delete(id: string): Promise<void> {

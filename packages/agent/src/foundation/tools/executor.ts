@@ -1,7 +1,18 @@
 import path from 'node:path';
-import type { ToolCall, ToolResult, ToolContext } from '../types.js';
+import type {
+  ApprovalRequest,
+  ApprovalResponse,
+  ToolCall,
+  ToolResult,
+  ToolContext,
+} from '../types.js';
 import { registry } from './registry.js';
 import { z } from 'zod';
+import type { ApprovalHook } from '../../hooks/approval.js';
+
+export type ApprovalRequestHandler = (
+  request: ApprovalRequest,
+) => Promise<ApprovalResponse>;
 
 /**
  * Patterns that are always denied, regardless of working directory.
@@ -146,16 +157,40 @@ export async function execute_tool(
 export async function execute_tool_calls_parallel(
   tool_calls: ToolCall[],
   context: ToolContext,
+  approvalHook?: ApprovalHook,
+  approvalRequestHandler?: ApprovalRequestHandler,
 ): Promise<ToolResult[]> {
+  if (tool_calls.length === 0) {
+    return [];
+  }
+
   const safe: ToolCall[] = [];
-  const guarded: ToolCall[] = [];
+  const guarded: Array<{ toolCall: ToolCall; request: ApprovalRequest }> = [];
 
   for (const tc of tool_calls) {
-    const def = registry.get(tc.name);
-    if (!def || def.danger_level === 'safe') {
-      safe.push(tc);
+    if (approvalHook) {
+      const request = approvalHook.request_approval(tc.name, tc.arguments, 'tool execution');
+      if (request === null) {
+        safe.push(tc);
+      } else {
+        guarded.push({ toolCall: tc, request });
+      }
     } else {
-      guarded.push(tc);
+      const def = registry.get(tc.name);
+      if (!def || def.danger_level === 'safe') {
+        safe.push(tc);
+      } else {
+        guarded.push({
+          toolCall: tc,
+          request: {
+            id: tc.id,
+            tool_name: tc.name,
+            args: tc.arguments,
+            context: 'tool execution',
+            timestamp: Date.now(),
+          },
+        });
+      }
     }
   }
 
@@ -163,10 +198,32 @@ export async function execute_tool_calls_parallel(
   const safePromises = safe.map((tc) => execute_tool(tc, context));
   const safeResults = await Promise.all(safePromises);
 
-  // warning/dangerous: serial (no approval hook in this standalone executor)
+  // warning/dangerous: serial
   const guardedResults: ToolResult[] = [];
-  for (const tc of guarded) {
-    guardedResults.push(await execute_tool(tc, context));
+  for (const guardedItem of guarded) {
+    const { toolCall: tc, request } = guardedItem;
+    if (!approvalHook) {
+      guardedResults.push(await execute_tool(tc, context));
+      continue;
+    }
+
+    const decision = approvalRequestHandler
+      ? await approvalRequestHandler(request)
+      : await approvalHook.wait_for_decision(request.id);
+
+    if (decision.decision === 'reject') {
+      guardedResults.push({
+        tool_call_id: tc.id,
+        output: `Approval rejected for ${tc.name}`,
+        success: false,
+      });
+    } else if (decision.decision === 'edit' && decision.modified_args) {
+      guardedResults.push(
+        await execute_tool({ ...tc, arguments: decision.modified_args }, context),
+      );
+    } else {
+      guardedResults.push(await execute_tool(tc, context));
+    }
   }
 
   return [...safeResults, ...guardedResults];

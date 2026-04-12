@@ -12,12 +12,12 @@ import type {
   AppConfig,
   CompressionConfig,
   CompressionMetadata,
-  ReflectionState,
   SynthesisResult,
   ReplContextValue,
   LLMContext,
   MessageRole,
   DangerLevel,
+  TurnEvent,
 } from '../src/types.js';
 
 describe('types', () => {
@@ -171,17 +171,6 @@ describe('types', () => {
     expect(truncated.type).toBe('truncate');
   });
 
-  it('ReflectionState should track trigger_count', () => {
-    const state: ReflectionState = {
-      in_progress: false,
-      task_buffer: [],
-      trigger_count: 0,
-      last_task_type: null,
-    };
-    expect(state.trigger_count).toBe(0);
-    expect(state.in_progress).toBe(false);
-  });
-
   it('SynthesisResult should hold partial Skill', () => {
     const result: SynthesisResult = {
       skill: { name: 'New Skill', task_type: 'test' },
@@ -199,5 +188,17 @@ describe('types', () => {
       handler: async () => ({ tool_call_id: '', output: '', success: true }),
     };
     expect(tool.danger_level).toBeUndefined();
+  });
+
+  it('TurnEvent should include session and task metadata', () => {
+    const evt: TurnEvent = {
+      id: 'evt-1',
+      session_id: 's1',
+      timestamp: Date.now(),
+      task_type: 'refactor',
+      user_input: 'refactor parser',
+    };
+    expect(evt.session_id).toBe('s1');
+    expect(evt.task_type).toBe('refactor');
   });
 });
