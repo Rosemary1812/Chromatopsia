@@ -1,5 +1,5 @@
 {
-  "name": "@chromatopsia/cli",
+  "name": "@chromatopsia/tui",
   "version": "0.1.0",
   "description": "Chromatopsia CLI — terminal interface for the agent",
   "type": "module",

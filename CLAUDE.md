@@ -75,23 +75,15 @@ Chromatopsia/
 │   │       ├── skills/     # 自学习层（Registry + Patcher）
 │   │       ├── hooks/      # Tool Hooks（Approval + Logging + CostTracking）
 │   │       ├── repl/       # REPL 核心（Loop + Reflection + Executor）
-│   │       └── config/     # YAML 配置加载
-│   │
-│   ├── terminal/         # 终端 REPL（Ink TUI，依赖 agent）
-│   │   └── src/
-│   │       ├── index.ts
-│   │       └── repl/
-│   │           ├── slash.ts      # 斜杠命令系统
-│   │           ├── components/    # Ink 组件
-│   │           └── utils/         # Markdown → Ink 转换
-│   │
-│   └── canvas/           # 无限画布基建（外围设施）
-│       └── src/
-│           ├── canvas/     # 无限画布渲染
-│           ├── floating/   # 悬浮球
-│           ├── sidebar/    # 侧边栏（文件树/Diff/MD）
-│           ├── voice/      # 语音输入
-│           └── components/ # 共享 UI 组件
+│   │       ├── config/     # YAML 配置加载
+│   │   └── tui/          # 终端 TUI（Ink，依赖 agent）
+│   │       ├── src/
+│   │       │   ├── index.ts
+│   │       │   └── repl/
+│   │       │       ├── slash.ts      # 斜杠命令系统
+│   │       │       ├── components/    # Ink 组件
+│   │       │       └── utils/         # Markdown → Ink 转换
+│   │       └── package.json
 │
 ├── Program/             # 设计文档（不放代码）
 │   ├── agent/
@@ -107,8 +99,8 @@ Chromatopsia/
 
 ## 开发原则
 
-1. **Agent 核心先行** — Phase 1 专注于 Agent 调通，TUI/画布是后话
-2. **packages/agent 是纯库** — 无 UI 依赖，可以独立测试；terminal 和 canvas 都依赖它
-3. **terminal 是 REPL UI 层** — Ink TUI，依赖 agent；不包含业务逻辑
+1. **Agent 核心先行** — Phase 1 专注于 Agent 调通，TUI 是后话
+2. **packages/agent 是纯库** — 无 UI 依赖，可以独立测试；TUI 依赖它
+3. **tui 是 REPL UI 层** — Ink TUI，依赖 agent；不包含业务逻辑，放在 agent/tui/ 下
 4. **设计文档在 Program/** — 代码在 packages/，文档在 Program/，职责分离
 5. **从 Phase 1 开始** — 先实现 LLM Provider + Tool 系统，再逐步推进

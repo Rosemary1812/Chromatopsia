@@ -17,12 +17,18 @@ Thumbs.db
 # Build output
 dist/
 build/
+coverage/
 
 # Editor
 .vscode/
 .idea/
 *.swp
 *.swo
+
+# Project specific
+Program/
+packages/agent/config.yaml
+.pnpm-debug.log
 
 # Claude Code
 .claude/cache/

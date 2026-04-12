@@ -2,14 +2,12 @@
   "name": "chromatopsia",
   "version": "0.1.0",
   "private": true,
-  "description": "Chromatopsia - Multi-project parallel Agent development canvas",
+  "description": "Chromatopsia - Agent development toolkit with terminal REPL",
   "scripts": {
     "build:agent": "pnpm --filter @chromatopsia/agent build",
-    "build:cli": "pnpm --filter @chromatopsia/cli build",
-    "build:canvas": "pnpm --filter @chromatopsia/canvas build",
+    "build:tui": "pnpm --filter @chromatopsia/tui build",
     "dev:agent": "pnpm --filter @chromatopsia/agent dev",
-    "dev:cli": "pnpm --filter @chromatopsia/cli dev",
-    "dev:canvas": "pnpm --filter @chromatopsia/canvas dev",
+    "dev:tui": "pnpm --filter @chromatopsia/tui dev",
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck"
   },

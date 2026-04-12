@@ -19,7 +19,16 @@
       "Bash(sed -i '1195s/\\\\`\\)\\\\`\\)`/`\\)`\\)/' packages/agent/tests/session/integration-context-compression.test.ts)",
       "Bash(sed -n '1195p' packages/agent/tests/session/integration-context-compression.test.ts)",
       "Bash(pnpm vitest:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(npx tsx:*)",
+      "Bash(pnpm typecheck:*)",
+      "Bash(sed:*)",
+      "Bash(pnpm install:*)",
+      "Bash(pnpm build:cli)",
+      "Bash(ls -d packages/agent/.test-integration-*)",
+      "Bash(npm run:*)",
+      "Bash(npx --package=typescript tsc --noEmit -p tsconfig.json)",
+      "Bash(pnpm run:*)"
     ]
   }
 }
