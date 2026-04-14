@@ -63,3 +63,13 @@ chat-bug.md
 Memory 重构.md
 Reflection 重构.md
 Skill 重构.md
+
+# Root-level documentation & logs (do not commit)
+CLI产品化差距分析.md
+CODE_REVIEW.md
+PR_SUMMARY.md
+TUI设计文档_Agent通信层借鉴版本.md
+TUI设计文档_UI层借鉴版本.md
+多Agent调研.md
+log.txt
+test-import.js
