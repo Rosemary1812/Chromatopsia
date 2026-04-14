@@ -17,7 +17,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { rm } from 'fs/promises';
 import { resolve } from 'path';
 import { randomUUID } from 'crypto';
-import { SessionManager } from '../../src/agent/session/manager.js';
+import { SessionManager } from '../../src/session/manager.js';
 import type { Message, LLMProvider } from '../../src/foundation/types.js';
 
 function make_test_dir() {

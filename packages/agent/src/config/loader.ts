@@ -7,6 +7,7 @@
 
 import { readFile } from 'fs/promises';
 import { resolve, dirname } from 'path';
+// @ts-ignore - yaml module provides its own types
 import { parse } from 'yaml';
 import { existsSync } from 'fs';
 import type { AppConfig } from '../foundation/types.js';

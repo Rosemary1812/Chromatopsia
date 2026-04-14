@@ -14,7 +14,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { rm } from 'fs/promises';
 import { resolve } from 'path';
-import { SessionHistory } from '../../src/agent/session/history.js';
+import { SessionHistory } from '../../src/session/history.js';
 import type { Message } from '../../src/foundation/types.js';
 
 const TEST_DIR = resolve(process.cwd(), '.test-session-temp');

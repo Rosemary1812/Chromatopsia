@@ -18,7 +18,7 @@ import {
   build_skill_injection,
   build_related_skills_injection,
   build_llm_context,
-} from '../../src/agent/session/context.js';
+} from '../../src/session/context.js';
 import type { Session, Skill } from '../../src/foundation/types.js';
 import type { SkillRegistry } from '../../src/skills/registry.js';
 

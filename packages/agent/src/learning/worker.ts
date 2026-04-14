@@ -1,5 +1,5 @@
 import type { LLMProvider, Session, Skill, TurnEvent } from '../foundation/types.js';
-import { SessionHistory } from '../agent/session/history.js';
+import { SessionHistory } from '../session/history.js';
 import { SkillStore } from '../skills/store.js';
 import { SkillRegistry } from '../skills/registry.js';
 import { TurnEventStore } from './turn-event-store.js';

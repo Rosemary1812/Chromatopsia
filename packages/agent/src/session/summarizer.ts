@@ -3,7 +3,7 @@
 // T-16
 // ============================================================
 
-import type { Message, LLMProvider, CompressionConfig, CompressionMetadata } from '../../foundation/types.js';
+import type { Message, LLMProvider, CompressionConfig, CompressionMetadata } from '../foundation/types.js';
 
 // 默认配置
 export const DEFAULT_COMPRESSION_CONFIG: Required<CompressionConfig> = {

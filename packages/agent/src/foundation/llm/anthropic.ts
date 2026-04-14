@@ -4,6 +4,7 @@
 // T-04: Anthropic Provider with streaming, retry, and tool support
 
 import Anthropic from '@anthropic-ai/sdk';
+// @ts-ignore - exponential-backoff is ESM only
 import { backOff } from 'exponential-backoff';
 import type {
   LLMProvider,

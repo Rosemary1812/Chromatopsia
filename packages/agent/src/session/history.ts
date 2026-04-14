@@ -1,7 +1,7 @@
 import { readFile, writeFile } from 'fs/promises';
 import { readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
-import type { Message } from '../../foundation/types.js';
+import type { Message } from '../foundation/types.js';
 
 const SESSION_INDEX_NAME = 'index.json';
 

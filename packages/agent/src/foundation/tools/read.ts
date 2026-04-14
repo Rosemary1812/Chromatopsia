@@ -1,37 +1,11 @@
 // T-09: Read Tool - file reading with sandbox
 import { readFile } from 'node:fs/promises';
-import path from 'node:path';
 import type { ToolDefinition, ToolResult, ToolContext } from '../types.js';
+import { resolve_path } from './executor.js';
 
 // ============================================================
-// Sandbox
+// Read Handler
 // ============================================================
-
-/**
- * Resolve a relative or absolute path within the working directory sandbox.
- * Throws if the resolved path escapes the sandbox.
- */
-export function resolve_path(
-  relative_or_absolute: string,
-  working_dir: string,
-): string {
-  const resolved = path.isAbsolute(relative_or_absolute)
-    ? relative_or_absolute
-    : path.resolve(working_dir, relative_or_absolute);
-
-  const normalized = path.normalize(resolved);
-  const normWd = path.normalize(working_dir);
-
-  if (
-    !normalized.startsWith(normWd + path.sep) &&
-    normalized !== normWd
-  ) {
-    throw new Error(
-      `Sandbox violation: ${relative_or_absolute} resolves outside working directory`,
-    );
-  }
-  return normalized;
-}
 
 // ============================================================
 // Read Handler

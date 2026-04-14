@@ -7,8 +7,8 @@
  * 3. Recent conversation history
  */
 
-import type { Message, Session, Skill, LLMContext } from '../../foundation/types.js';
-import type { SkillRegistry } from '../../skills/registry.js';
+import type { Message, Session, Skill, LLMContext } from '../foundation/types.js';
+import type { SkillRegistry } from '../skills/registry.js';
 
 // ----------------------------------------------------------------
 // System prompt building
@@ -107,8 +107,8 @@ export function build_llm_context(
   extra_system_messages: Message[] = [],
 ): LLMContext {
   const chunks: string[] = [];
-  let capturedToolCalls: import('../../foundation/types.js').ToolCall[] = [];
-  let fullResponse: { content: string; tool_calls?: import('../../foundation/types.js').ToolCall[]; finish_reason: 'stop' | 'tool_use' } | null = null;
+  let capturedToolCalls: import('../foundation/types.js').ToolCall[] = [];
+  let fullResponse: { content: string; tool_calls?: import('../foundation/types.js').ToolCall[]; finish_reason: 'stop' | 'tool_use' } | null = null;
 
   const messages: Message[] = [];
 

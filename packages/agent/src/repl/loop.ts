@@ -10,10 +10,11 @@ import type {
   AppConfig,
   AgentEvents,
   LogLevel,
+  ProviderConfig,
 } from '../foundation/types.js';
-import { SessionManager } from '../agent/session/manager.js';
-import type { SessionHistory } from '../agent/session/history.js';
-import { build_llm_context } from '../agent/session/context.js';
+import { SessionManager } from '../session/manager.js';
+import type { SessionHistory } from '../session/history.js';
+import { build_llm_context } from '../session/context.js';
 import { SkillRegistry } from '../skills/registry.js';
 import { SkillStore } from '../skills/store.js';
 import { ApprovalHook } from '../hooks/approval.js';
@@ -23,13 +24,16 @@ import { execute_tool_calls_parallel } from './executor.js';
 import { execute_skill } from './executor.js';
 import { handle_slash_command as default_slash_handler } from './slash.js';
 import { createProvider } from '../foundation/llm/index.js';
-import { needs_compression, DEFAULT_COMPRESSION_CONFIG } from '../agent/session/summarizer.js';
+import { needs_compression, DEFAULT_COMPRESSION_CONFIG } from '../session/summarizer.js';
 import { MemoryIndexStore } from '../memory/index-store.js';
 import { MemoryTopicStore } from '../memory/topic-store.js';
 import { buildMemoryInjection } from '../memory/injector.js';
 import { maybeWriteMemory } from '../memory/writer.js';
 import { TurnEventStore } from '../learning/turn-event-store.js';
 import { LearningWorker } from '../learning/worker.js';
+import { retryStreamWithBackoff } from '../foundation/llm/retry-handler.js';
+import { handleTruncation } from '../foundation/llm/continuation.js';
+import { shouldCompact, getContextDiagnostics } from '../foundation/llm/token-counter.js';
 import * as os from 'node:os';
 import * as path from 'node:path';
 
@@ -40,11 +44,11 @@ import * as path from 'node:path';
 export interface ReplOptions {
   /** Working directory for the session */
   working_dir: string;
-  /** Provider type: 'anthropic' | 'openai' */
-  provider: 'anthropic' | 'openai';
-  /** Provider configuration (api_key, model, etc.) */
-  config: {
-    api_key: string;
+  /** Provider type: 'anthropic' | 'openai'. Falls back to ANTHROPIC_API_KEY presence. */
+  provider?: 'anthropic' | 'openai';
+  /** Provider configuration (api_key, model, etc.). Falls back to env vars. */
+  config?: {
+    api_key?: string;
     base_url?: string;
     model?: string;
     max_tokens?: number;
@@ -111,6 +115,17 @@ export async function run_repl(options: ReplOptions): Promise<RunReplResult> {
     logLevel = 'error',
   } = options;
 
+  // Fall back to env vars if not provided
+  const resolvedProvider = provider_type
+    ?? (process.env.ANTHROPIC_API_KEY ? 'anthropic' : process.env.OPENAI_API_KEY ? 'openai' : 'anthropic');
+  const resolvedConfig: ProviderConfig = {
+    api_key: config?.api_key ?? process.env.ANTHROPIC_API_KEY ?? process.env.OPENAI_API_KEY ?? '',
+    base_url: config?.base_url,
+    model: config?.model,
+    max_tokens: config?.max_tokens,
+    timeout: config?.timeout,
+  };
+
   const isDebug = logLevel === 'debug';
 
   function emit<K extends keyof AgentEvents>(event: K, ...args: Parameters<NonNullable<AgentEvents[K]>>) {
@@ -122,7 +137,7 @@ export async function run_repl(options: ReplOptions): Promise<RunReplResult> {
   register_all_tools();
 
   // ---- Initialize components ----
-  const provider = createProvider(provider_type, config);
+  const provider = createProvider(resolvedProvider, resolvedConfig);
   const session_manager = new SessionManager(working_dir, provider);
   const session = session_manager.create_session(working_dir);
   const skill_reg = new SkillRegistry();
@@ -419,7 +434,7 @@ async function handle_normal_turn(
       await session.compact();
     }
 
-    // Stream LLM response
+    // Stream LLM response with retry support
     let llm_response: LLMResponse | null = null;
 
     const STREAM_TIMEOUT_MS = 60_000; // 60s timeout per turn
@@ -430,9 +445,15 @@ async function handle_normal_turn(
         for (const m of ctx.messages) {
           emit('onDebug', `msg role=${m.role} content_len=${m.content.length}`);
         }
-        emit('onDebug', 'calling chat_stream...');
+        emit('onDebug', 'calling chat_stream with retry support...');
       }
-      const gen = provider.chat_stream(ctx.messages, registry.get_all());
+
+      // Wrap streaming with exponential backoff retry (max 3 attempts)
+      const retryableGen = retryStreamWithBackoff(
+        () => provider.chat_stream(ctx.messages, registry.get_all()),
+        { maxRetries: 3, initialDelayMs: 1000 }
+      );
+
       let result: IteratorResult<string, LLMResponse>;
       while (true) {
         let timeoutId: NodeJS.Timeout;
@@ -442,7 +463,7 @@ async function handle_normal_turn(
             resolve({ timedOut: true });
           }, STREAM_TIMEOUT_MS);
         });
-        const nextPromise = gen.next();
+        const nextPromise = retryableGen.next();
 
         const raceResult = await Promise.race([nextPromise, timeoutPromise]);
         clearTimeout(timeoutId!);
@@ -484,23 +505,42 @@ async function handle_normal_turn(
       return;
     }
 
+    // Handle truncation recovery: check if response was cut off, auto-continue if needed
+    let assistantContent = llm_response.content || '';
+    try {
+      assistantContent = await handleTruncation(
+        provider,
+        ctx.messages,
+        llm_response,
+      );
+      if (isDebug && assistantContent !== llm_response.content) {
+        emit('onDebug', `Response auto-continued (truncation recovery): +${assistantContent.length - llm_response.content.length} chars`);
+      }
+    } catch (err) {
+      if (isDebug) {
+        emit('onDebug', `Truncation recovery failed: ${err instanceof Error ? err.message : String(err)}`);
+      }
+      // Fall back to original content if continuation fails
+      assistantContent = llm_response.content || '';
+    }
+
     // Use streamed chunks as canonical fallback when provider return content is unexpectedly empty.
     ctx.setToolCalls(llm_response.tool_calls ?? []);
     const finalized = ctx.finalizeStream();
-    const assistantContent = llm_response.content || finalized.content;
+    const finalContent = assistantContent || finalized.content;
     const toolCalls = llm_response.tool_calls ?? finalized.tool_calls ?? [];
 
     // No tool_calls → output text and end turn
     if (!toolCalls || toolCalls.length === 0) {
-      session.add_message({ role: 'assistant', content: assistantContent });
-      emit('onTurnComplete', assistantContent);
+      session.add_message({ role: 'assistant', content: finalContent });
+      emit('onTurnComplete', finalContent);
       break;
     }
 
     // Persist assistant tool-call turn so next LLM call has a complete protocol transcript.
     session.add_message({
       role: 'assistant',
-      content: assistantContent,
+      content: finalContent,
       tool_calls: toolCalls,
     });
 
@@ -537,8 +577,8 @@ async function handle_normal_turn(
       emit('onToolEnd', toolCalls[i], results[i]);
     }
 
-    // Inject tool results and loop again
-    // Add tool results to session so next build_llm_context sees them
+    // Inject tool results to session for persistence and next LLM context
+    // The context will be rebuilt in the next loop iteration via build_llm_context
     for (let i = 0; i < results.length; i++) {
       const normalized = { ...results[i], tool_call_id: results[i].tool_call_id || toolCalls[i].id };
       session.add_message({
@@ -547,17 +587,17 @@ async function handle_normal_turn(
         tool_results: [normalized],
       });
     }
-    ctx.messages = [
-      ...ctx.messages,
-      { role: 'assistant', content: assistantContent, tool_calls: toolCalls },
-      ...results.map((r, i) => {
-        const normalized = { ...r, tool_call_id: r.tool_call_id || toolCalls[i].id };
-        return {
-          role: 'tool' as const,
-          content: normalized.output,
-          tool_results: [normalized],
-        };
-      }),
-    ];
+
+    // Proactive compaction: check context fill rate, compact if ≥80%
+    if (shouldCompact(session.messages, provider.get_model(), 0.8)) {
+      if (isDebug) {
+        const diagnostics = getContextDiagnostics(session.messages, provider.get_model());
+        emit('onDebug', `Proactive compaction: fill rate ${diagnostics.fillPercentage}`);
+      }
+      await session.compact();
+    }
+
+    // Rebuild context for next LLM call (includes tool results from session)
+    ctx = build_llm_context(session, task_type, null, skill_reg, extra_system_messages);
   }
 }

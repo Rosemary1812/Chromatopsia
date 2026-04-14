@@ -29,30 +29,71 @@ export class TurnEventStore {
     await fs.appendFile(this.eventsPath, `${JSON.stringify(event)}\n`, 'utf-8');
   }
 
+  /**
+   * Retrieve recent events for a session using reverse streaming.
+   * Reads from the end of the file backwards to avoid loading the entire file into memory.
+   */
   async recentBySession(sessionId: string, limit: number): Promise<TurnEvent[]> {
     await this.ensureDir();
-    let raw = '';
     try {
-      raw = await fs.readFile(this.eventsPath, 'utf-8');
+      const stats = await fs.stat(this.eventsPath);
+      if (stats.size === 0) return [];
     } catch {
       return [];
     }
 
     const out: TurnEvent[] = [];
-    const lines = raw.split('\n');
-    for (let i = lines.length - 1; i >= 0; i--) {
-      const line = lines[i].trim();
-      if (!line) continue;
+    const bufferSize = Math.max(8192, Math.min(65536, limit * 256)); // Adaptive buffer
+    const buffer = Buffer.alloc(bufferSize);
+    let position = (await fs.stat(this.eventsPath)).size;
+    let leftover = '';
+
+    // Read file backwards in chunks
+    while (position > 0 && out.length < limit) {
+      const bytesToRead = Math.min(bufferSize, position);
+      position -= bytesToRead;
+
+      const fd = await fs.open(this.eventsPath, 'r');
       try {
-        const parsed = JSON.parse(line) as TurnEvent;
-        if (parsed.session_id === sessionId) {
-          out.push(parsed);
-          if (out.length >= limit) break;
+        const { bytesRead } = await fd.read(buffer, 0, bytesToRead, position);
+        const chunk = buffer.toString('utf-8', 0, bytesRead);
+        const combined = chunk + leftover;
+
+        // Split by newlines and process in reverse (skip the last incomplete line)
+        const lines = combined.split('\n');
+        leftover = lines[0]; // Save the incomplete line for next iteration
+
+        // Process lines in reverse order, skipping the last one
+        for (let i = lines.length - 1; i > 0; i--) {
+          const line = lines[i].trim();
+          if (!line) continue;
+          try {
+            const parsed = JSON.parse(line) as TurnEvent;
+            if (parsed.session_id === sessionId) {
+              out.push(parsed);
+              if (out.length >= limit) break;
+            }
+          } catch {
+            // Skip malformed lines
+          }
         }
-      } catch {
-        // skip malformed lines
+      } finally {
+        await fd.close();
       }
     }
+
+    // Handle leftover line if we haven't reached the limit
+    if (out.length < limit && leftover.trim()) {
+      try {
+        const parsed = JSON.parse(leftover.trim()) as TurnEvent;
+        if (parsed.session_id === sessionId) {
+          out.push(parsed);
+        }
+      } catch {
+        // Skip malformed line
+      }
+    }
+
     return out.reverse();
   }
 

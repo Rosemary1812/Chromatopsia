@@ -3,10 +3,16 @@
   "version": "0.1.0",
   "private": true,
   "description": "Chromatopsia - Agent development toolkit with terminal REPL",
+  "bin": {
+    "chromatopsia": "./packages/cli/bin/chromatopsia.mjs"
+  },
   "scripts": {
     "build:agent": "pnpm --filter @chromatopsia/agent build",
+    "build:cli": "pnpm --filter @chromatopsia/cli build",
     "build:tui": "pnpm --filter @chromatopsia/tui build",
+    "build": "pnpm build:agent && pnpm build:cli",
     "dev:agent": "pnpm --filter @chromatopsia/agent dev",
+    "dev:cli": "pnpm --filter @chromatopsia/cli dev",
     "dev:tui": "pnpm --filter @chromatopsia/tui dev",
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck"

@@ -7,24 +7,15 @@ import type {
   ToolContext,
 } from '../types.js';
 import { registry } from './registry.js';
+import { PATH_TRAVERSAL_PATTERNS } from './denied-patterns.js';
+// Re-export for tests — DENIED_PATTERNS is the legacy name used in test imports
+export { PATH_TRAVERSAL_PATTERNS as DENIED_PATTERNS } from './denied-patterns.js';
 import { z } from 'zod';
 import type { ApprovalHook } from '../../hooks/approval.js';
 
 export type ApprovalRequestHandler = (
   request: ApprovalRequest,
 ) => Promise<ApprovalResponse>;
-
-/**
- * Patterns that are always denied, regardless of working directory.
- * Used for shell command sandboxing.
- */
-export const DENIED_PATTERNS: RegExp[] = [
-  /^\s*cd\s+\.\./,           //向上跳转
-  /~\//,                      // home 目录访问
-  /\/etc\//,                  // 系统配置
-  /\/proc\//,                // 进程信息
-  /\/sys\//,                 // 内核信息
-];
 
 /**
  * Resolve a relative or absolute path within the working directory sandbox.
@@ -69,7 +60,7 @@ export function sandbox_bash_command(
   }
 
   // Check denied patterns after tilde expansion
-  for (const pattern of DENIED_PATTERNS) {
+  for (const pattern of PATH_TRAVERSAL_PATTERNS) {
     if (pattern.test(cmd)) {
       throw new Error(`Denied pattern detected: ${rawCommand}`);
     }

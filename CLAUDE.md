@@ -66,24 +66,25 @@ Chromatopsia/
 ├── packages/
 │   ├── agent/           # Agent 核心（纯库，无 UI 依赖）
 │   │   └── src/
-│   │       ├── types.ts    # 全局类型定义
-│   │       ├── index.ts    # 导出入口
-│   │       ├── llm/        # LLM Provider（Anthropic / OpenAI）
-│   │       ├── tools/      # Tool 系统（Registry + 7个内置工具 + 执行器）
-│   │       ├── session/    # Session 管理（Manager + History + Context + Summarizer）
-│   │       ├── memory/     # 跨会话记忆（Storage + Retriever + Injector）
-│   │       ├── skills/     # 自学习层（Registry + Patcher）
-│   │       ├── hooks/      # Tool Hooks（Approval + Logging + CostTracking）
-│   │       ├── repl/       # REPL 核心（Loop + Reflection + Executor）
-│   │       ├── config/     # YAML 配置加载
-│   │   └── tui/          # 终端 TUI（Ink，依赖 agent）
-│   │       ├── src/
-│   │       │   ├── index.ts
-│   │       │   └── repl/
-│   │       │       ├── slash.ts      # 斜杠命令系统
-│   │       │       ├── components/    # Ink 组件
-│   │       │       └── utils/         # Markdown → Ink 转换
-│   │       └── package.json
+│   │       ├── foundation/   # 底层能力
+│   │       │   ├── llm/      # LLM Provider（Anthropic / OpenAI）
+│   │       │   └── tools/    # Tool 系统（Registry + 7个内置工具 + 执行器）
+│   │       ├── session/      # Session 管理（Manager + History + Context + Summarizer）
+│   │       ├── repl/         # REPL 核心（Loop + Executor）
+│   │       ├── skills/       # 自学习层（Registry + Store）
+│   │       ├── memory/       # 跨会话记忆（Storage + Retriever + Injector）
+│   │       ├── learning/     # Learning Worker（TurnEvent + Synthesis）
+│   │       ├── hooks/        # Tool Hooks（Approval）
+│   │       ├── config/       # YAML 配置加载
+│   │       ├── types.ts      # 全局类型定义
+│   │       └── index.ts      # 导出入口
+│   ├── cli/             # 独立 CLI 入口（调 agent 纯库）
+│   │   ├── bin/         # Shell 入口（chromatopsia.mjs）
+│   │   └── src/
+│   │       ├── cli.ts       # CLI 主类（TTYContext + SignalHandler）
+│   │       └── index.ts     # CLI 启动脚本
+│   └── tui/             # 终端 TUI（未来 Ink，依赖 agent 纯库）
+│       └── src/
 │
 ├── Program/             # 设计文档（不放代码）
 │   ├── agent/
@@ -99,8 +100,9 @@ Chromatopsia/
 
 ## 开发原则
 
-1. **Agent 核心先行** — Phase 1 专注于 Agent 调通，TUI 是后话
-2. **packages/agent 是纯库** — 无 UI 依赖，可以独立测试；TUI 依赖它
-3. **tui 是 REPL UI 层** — Ink TUI，依赖 agent；不包含业务逻辑，放在 agent/tui/ 下
-4. **设计文档在 Program/** — 代码在 packages/，文档在 Program/，职责分离
-5. **从 Phase 1 开始** — 先实现 LLM Provider + Tool 系统，再逐步推进
+1. **三个包平级** — `agent`、`cli`、`tui` 都是 `packages/` 下的独立子包，通过 `workspace:*` 引用 agent
+2. **packages/agent 是纯库** — 零 UI 依赖，可以独立测试；cli 和 tui 都依赖它
+3. **cli 调 agent** — CLI 是 agent 的消费者，调用 `run_repl()` 启动 REPL
+4. **tui 是 REPL UI 层** — Ink TUI，不包含业务逻辑，放在 `packages/tui/` 下（与 cli 平级）
+5. **设计文档在 Program/** — 代码在 packages/，文档在 Program/，职责分离
+6. **从 Phase 1 开始** — 先实现 LLM Provider + Tool 系统，再逐步推进

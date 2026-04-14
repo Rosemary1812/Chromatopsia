@@ -1,6 +1,7 @@
 // T-09: Read Tool tests
 import { describe, it, expect, beforeEach } from 'vitest';
-import { resolve_path, read_definition } from '../../src/foundation/tools/read.js';
+import { read_definition } from '../../src/foundation/tools/read.js';
+import { resolve_path } from '../../src/foundation/tools/executor.js';
 import type { ToolContext } from '../../src/foundation/types.js';
 import { writeFile, unlink, mkdir } from 'node:fs/promises';
 import path from 'node:path';

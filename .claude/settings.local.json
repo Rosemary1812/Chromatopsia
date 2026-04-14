@@ -28,7 +28,9 @@
       "Bash(ls -d packages/agent/.test-integration-*)",
       "Bash(npm run:*)",
       "Bash(npx --package=typescript tsc --noEmit -p tsconfig.json)",
-      "Bash(pnpm run:*)"
+      "Bash(pnpm run:*)",
+      "Bash(pnpm build:agent)",
+      "Bash(timeout 5 pnpm dev:cli)"
     ]
   }
 }

@@ -14,9 +14,10 @@ import type {
   Session,
   Message,
   ProjectContext,
+  UserContext,
   CompressionMetadata,
   LLMProvider,
-} from '../../foundation/types.js';
+} from '../foundation/types.js';
 import { SessionHistory } from './history.js';
 import {
   compress_session,
@@ -32,7 +33,7 @@ class SessionImpl implements Session {
   messages: Message[] = [];
   working_directory: string;
   project_context?: ProjectContext;
-  user_context?: ProjectContext;
+  user_context?: UserContext;
   created_at: number;
   last_active: number;
 

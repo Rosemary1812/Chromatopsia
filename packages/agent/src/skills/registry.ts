@@ -107,22 +107,20 @@ export class SkillRegistry {
     }
   }
 
-  list(): void {
+  list(): string[] {
     const all = [...this.skills.values()];
     if (all.length === 0) {
-      console.log('No skills registered.');
-      return;
+      return [];
     }
-    console.log(all.map((s) => `${s.name} (${s.task_type})`).join('\n'));
+    return all.map((s) => `${s.name} (${s.task_type})`);
   }
 
-  show(name: string): void {
+  show(name: string): string | null {
     const skill = [...this.skills.values()].find((s) => s.name === name);
     if (!skill) {
-      console.log(`Skill "${name}" not found.`);
-      return;
+      return null;
     }
-    console.log(JSON.stringify(skill, null, 2));
+    return JSON.stringify(skill, null, 2);
   }
 
   delete(name: string): void {
@@ -141,15 +139,12 @@ export class SkillRegistry {
     }
   }
 
-  search(query: string): void {
+  search(query: string): string[] {
     const results = this.fuzzy_match(query);
     if (results.length === 0) {
-      console.log(`No skills found for "${query}".`);
-      return;
+      return [];
     }
-    console.log(
-      results.map((s) => `${s.name} — ${s.trigger_condition}`).join('\n'),
-    );
+    return results.map((s) => `${s.name} — ${s.trigger_condition}`);
   }
 
   getAll(): Skill[] {

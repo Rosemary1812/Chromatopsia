@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { LLMProvider, LLMResponse, Session, Message } from '../../src/foundation/types.js';
 import { run_repl } from '../../src/repl/loop.js';
 import * as llmIndex from '../../src/foundation/llm/index.js';
-import * as sessionModule from '../../src/agent/session/manager.js';
+import * as sessionModule from '../../src/session/manager.js';
 import * as slashModule from '../../src/repl/slash.js';
 import * as executorModule from '../../src/repl/executor.js';
 import * as skillRegistryModule from '../../src/skills/registry.js';

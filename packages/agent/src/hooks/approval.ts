@@ -2,52 +2,7 @@
 import { randomUUID } from 'crypto';
 import type { ApprovalRequest, ApprovalResponse } from '../foundation/types.js';
 import { registry } from '../foundation/tools/registry.js';
-
-// ============================================================
-// Dangerous Pattern Detection
-// ============================================================
-
-/**
- * Patterns that are always considered dangerous and require approval.
- * Similar to DENIED_PATTERNS in bash.ts but used for approval gating.
- */
-const DANGEROUS_PATTERNS: RegExp[] = [
-  /^\s*rm\s+-rf/i,
-  /^\s*git\s+push\s+--force/i,
-  /^\s*git\s+push\s+-f/i,
-  /^\s*dd\s+/i,
-  /^\s*mkfs/i,
-  /^\s*fdisk/i,
-  /^\s*drop\s+(table|database)/i,
-  /^\s*shutdown/i,
-  /^\s*reboot/i,
-  /^\s*sudo\s+su/i,
-  /^\s*chmod\s+-R\s+777/i,
-  /^\s*curl\b[^\n]*\|\s*sh\b/i,
-  /^\s*wget\b[^\n]*\|\s*sh\b/i,
-];
-
-function matches_dangerous_pattern(input: string): boolean {
-  return DANGEROUS_PATTERNS.some((pattern) => pattern.test(input.trim()));
-}
-
-// ============================================================
-// Sensitive File Patterns
-// ============================================================
-
-const SENSITIVE_PATTERNS: RegExp[] = [
-  /^\/etc\//i,
-  /^\/usr\/(?:bin|sbin|local\/bin)/i,
-  /^\/var\/log\//i,
-  /^\/root\//i,
-  /^(?:\.ssh\/|\/\.ssh\/)/i,
-  /^(?:\.aws\/|\/\.aws\/)/i,
-  /^\/tmp\/.*\.sh$/i,
-];
-
-function is_sensitive_path(path: string): boolean {
-  return SENSITIVE_PATTERNS.some((pattern) => pattern.test(path));
-}
+import { is_dangerous_command, is_sensitive_path } from '../foundation/tools/denied-patterns.js';
 
 // ============================================================
 // ApprovalHook
@@ -87,7 +42,7 @@ export class ApprovalHook {
       // Check for dangerous command patterns in arguments
       if (tool_name === 'run_shell') {
         const command = args['command'] as string;
-        if (command && matches_dangerous_pattern(command)) {
+        if (command && is_dangerous_command(command)) {
           return this.createRequest(tool_name, args, context);
         }
       }
@@ -132,7 +87,7 @@ export class ApprovalHook {
 
       case 'run_shell': {
         const command = args['command'] as string;
-        if (command && matches_dangerous_pattern(command)) {
+        if (command && is_dangerous_command(command)) {
           return true;
         }
         return false;
@@ -235,9 +190,3 @@ export class ApprovalHook {
     return this.pendingRequests.size > 0;
   }
 }
-
-// ============================================================
-// Exports
-// ============================================================
-
-export { DANGEROUS_PATTERNS };

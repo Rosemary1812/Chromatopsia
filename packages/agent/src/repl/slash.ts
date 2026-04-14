@@ -1,30 +1,32 @@
 /**
  * Slash command stub for agent package.
  *
- * Slash commands are handled in the terminal (TUI) layer, not in the agent.
- * This stub exists only to satisfy imports from test files.
+ * Slash commands are handled in the terminal (TUI) layer, not in the agent core.
+ * This file provides a minimal agent-layer interface for compatibility.
  *
- * @see packages/terminal/src/repl/slash.ts for the real implementation.
+ * @see packages/tui/src/repl/slash.ts for the real implementation.
  */
 
 import type { Session } from '../foundation/types.js';
 import type { SkillRegistry } from '../skills/registry.js';
 
 /**
- * Re-exported from terminal package. See terminal/slash.ts for real implementation.
- * In the agent's standalone REPL (readline-based), slash commands are not supported.
+ * Slash command handler stub.
+ * Always returns false since the agent layer does not process slash commands.
+ * The terminal TUI layer handles all slash command parsing and execution.
  */
 export function handle_slash_command(
   _input: string,
   _session: Session,
   _skill_reg: SkillRegistry,
 ): boolean {
-  // Slash commands are terminal-layer concern; agent loop does not handle them.
   return false;
 }
 
+/**
+ * Returns help text for slash commands (not available in agent REPL).
+ */
 export function get_help_text(): string {
-  return 'Slash commands are not available in the agent REPL. Use /help in the terminal TUI.';
+  return 'Slash commands are not available in the standalone agent REPL. Use the terminal TUI for access to slash commands.';
 }
 
-export const SLASH_COMMANDS: Record<string, { description: string; handler: (...args: unknown[]) => unknown }> = {};

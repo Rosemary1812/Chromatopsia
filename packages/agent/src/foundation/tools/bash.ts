@@ -1,30 +1,7 @@
 // T-08: Bash Tool - run_shell command execution with sandbox
 import { spawn } from 'child_process';
 import type { ToolDefinition, ToolResult, ToolContext } from '../types.js';
-
-// ============================================================
-// Dangerous Pattern Detection
-// ============================================================
-
-const DENIED_PATTERNS: RegExp[] = [
-  /^\s*rm\s+-rf/i,
-  /^\s*git\s+push\s+--force/i,
-  /^\s*git\s+push\s+-f/i,
-  /^\s*dd\s+/i,
-  /^\s*mkfs/i,
-  /^\s*fdisk/i,
-  /^\s*drop\s+(table|database)/i,
-  /^\s*shutdown/i,
-  /^\s*reboot/i,
-  /^\s*sudo\s+su/i,
-  /^\s*chmod\s+-R\s+777/i,
-  /^\s*curl\b[^\n]*\|\s*sh\b/i,
-  /^\s*wget\b[^\n]*\|\s*sh\b/i,
-];
-
-function is_dangerous_command(command: string): boolean {
-  return DENIED_PATTERNS.some((pattern) => pattern.test(command.trim()));
-}
+import { is_dangerous_command } from './denied-patterns.js';
 
 // ============================================================
 // Sandbox

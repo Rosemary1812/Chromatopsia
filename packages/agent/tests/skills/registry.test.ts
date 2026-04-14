@@ -107,39 +107,29 @@ describe('SkillRegistry', () => {
   });
 
   describe('list / show / delete', () => {
-    it('list prints all skills', () => {
-      const consoleMock = vi.spyOn(console, 'log').mockImplementation(() => {});
+    it('list returns all skills as formatted strings', () => {
       registry.register(makeSkill({ id: 's1', name: 'Skill A' }));
       registry.register(makeSkill({ id: 's2', name: 'Skill B', task_type: 'other' }));
-      registry.list();
-      expect(consoleMock).toHaveBeenCalledWith(
-        'Skill A (git-rebase)\nSkill B (other)',
-      );
-      consoleMock.mockRestore();
+      const result = registry.list();
+      expect(result).toContain('Skill A (git-rebase)');
+      expect(result).toContain('Skill B (other)');
     });
 
-    it('list prints empty message when no skills', () => {
-      const consoleMock = vi.spyOn(console, 'log').mockImplementation(() => {});
-      registry.list();
-      expect(consoleMock).toHaveBeenCalledWith('No skills registered.');
-      consoleMock.mockRestore();
+    it('list returns empty array when no skills', () => {
+      const result = registry.list();
+      expect(result).toEqual([]);
     });
 
-    it('show prints skill JSON', () => {
-      const consoleMock = vi.spyOn(console, 'log').mockImplementation(() => {});
+    it('show returns skill as JSON string', () => {
       registry.register(makeSkill({ id: 's1', name: 'Git Rebase' }));
-      registry.show('Git Rebase');
-      expect(consoleMock).toHaveBeenCalled();
-      const printed = consoleMock.mock.calls[0][0] as string;
-      expect(JSON.parse(printed)).toMatchObject({ name: 'Git Rebase', id: 's1' });
-      consoleMock.mockRestore();
+      const result = registry.show('Git Rebase');
+      expect(result).not.toBeNull();
+      expect(JSON.parse(result!)).toMatchObject({ name: 'Git Rebase', id: 's1' });
     });
 
-    it('show prints not found for unknown skill', () => {
-      const consoleMock = vi.spyOn(console, 'log').mockImplementation(() => {});
-      registry.show('NonExistent');
-      expect(consoleMock).toHaveBeenCalledWith('Skill "NonExistent" not found.');
-      consoleMock.mockRestore();
+    it('show returns null for unknown skill', () => {
+      const result = registry.show('NonExistent');
+      expect(result).toBeNull();
     });
 
     it('delete removes skill by name', () => {
@@ -170,21 +160,17 @@ describe('SkillRegistry', () => {
   });
 
   describe('search', () => {
-    it('prints fuzzy_match results', () => {
-      const consoleMock = vi.spyOn(console, 'log').mockImplementation(() => {});
+    it('returns fuzzy_match results as formatted strings', () => {
       registry.register(
         makeSkill({ id: 's1', name: 'Git Rebase', trigger_condition: 'clean history' }),
       );
-      registry.search('history');
-      expect(consoleMock).toHaveBeenCalledWith('Git Rebase — clean history');
-      consoleMock.mockRestore();
+      const result = registry.search('history');
+      expect(result).toContain('Git Rebase — clean history');
     });
 
-    it('prints not found for empty results', () => {
-      const consoleMock = vi.spyOn(console, 'log').mockImplementation(() => {});
-      registry.search('nonexistent');
-      expect(consoleMock).toHaveBeenCalledWith('No skills found for "nonexistent".');
-      consoleMock.mockRestore();
+    it('returns empty array for no matches', () => {
+      const result = registry.search('nonexistent');
+      expect(result).toEqual([]);
     });
   });
 

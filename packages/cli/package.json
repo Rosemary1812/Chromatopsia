@@ -1,0 +1,26 @@
+{
+  "name": "@chromatopsia/cli",
+  "version": "0.0.1",
+  "description": "Chromatopsia CLI - Terminal Agent Interface",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "chromatopsia": "./bin/chromatopsia.mjs"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/index.ts",
+    "cli": "tsx src/index.ts",
+    "test": "vitest"
+  },
+  "dependencies": {
+    "@chromatopsia/agent": "workspace:*",
+    "dotenv": "^16.0.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0",
+    "tsx": "^4.19.2"
+  }
+}
