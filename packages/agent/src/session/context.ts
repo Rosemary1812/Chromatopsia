@@ -143,7 +143,12 @@ export function build_llm_context(
   // 3. Conversation history (user + assistant + tool messages)
   for (const msg of session.messages) {
     if (msg.role === 'user' || msg.role === 'assistant' || msg.role === 'tool') {
-      messages.push({ role: msg.role, content: msg.content, tool_results: msg.tool_results });
+      messages.push({
+        role: msg.role,
+        content: msg.content,
+        tool_calls: msg.tool_calls,
+        tool_results: msg.tool_results,
+      });
     }
   }
 
