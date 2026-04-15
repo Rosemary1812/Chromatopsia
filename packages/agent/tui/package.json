@@ -13,14 +13,17 @@
   },
   "scripts": {
     "build": "tsc",
-    "cli": "pnpm --filter @chromatopsia/agent build && tsx src/index.ts",
+    "cli": "pnpm --filter @chromatopsia/agent build && tsx src/index.tsx",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@chromatopsia/agent": "workspace:*"
+    "@chromatopsia/agent": "workspace:*",
+    "ink": "^5.1.0",
+    "react": "^18.3.1"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
+    "@types/react": "^18.3.12",
     "typescript": "^5.7.2",
     "tsx": "^4.19.2"
   },

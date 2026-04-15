@@ -79,6 +79,8 @@ export interface ReplOptions {
 export interface RunReplResult {
   /** Handle a user input turn (exposed for testing / Ink App) */
   handle_user_input: (input: string) => Promise<void>;
+  /** Clear current session conversation */
+  clear_conversation: () => void;
   /** Start the REPL (begins reading input) */
   start: () => Promise<never>;
 }
@@ -103,6 +105,7 @@ export interface AgentRuntimeOptions {
 
 export interface AgentRuntimeResult {
   handle_user_input: (input: string) => Promise<void>;
+  clear_conversation: () => void;
 }
 
 // ------------------------------------------------------------
@@ -379,6 +382,9 @@ export async function create_agent_runtime(options: AgentRuntimeOptions): Promis
 
   return {
     handle_user_input,
+    clear_conversation: () => {
+      session.clear();
+    },
   };
 }
 
@@ -490,6 +496,7 @@ const runtime = createRuntimeSinkFromAgentEvents(events);
 
   return {
     handle_user_input: agentRuntime.handle_user_input,
+    clear_conversation: agentRuntime.clear_conversation,
     start: main_loop,
   };
 }

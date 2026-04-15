@@ -56,6 +56,12 @@ describe('bash tool', () => {
       session: {} as any,
       working_directory: process.cwd(),
     };
+    const shortSleepCommand = process.platform === 'win32'
+      ? 'powershell -NoProfile -Command "Start-Sleep -Milliseconds 100; Write-Output done"'
+      : 'sleep 0.1 && echo done';
+    const longSleepCommand = process.platform === 'win32'
+      ? 'powershell -NoProfile -Command "Start-Sleep -Seconds 5"'
+      : 'sleep 5';
 
     it('should reject empty command', async () => {
       const result = await run_shell_definition.handler({}, mockContext);
@@ -92,7 +98,7 @@ describe('bash tool', () => {
 
     it('should handle command with timeout', async () => {
       const result = await run_shell_definition.handler(
-        { command: 'sleep 0.1 && echo done', timeout: 5000 },
+        { command: shortSleepCommand, timeout: 5000 },
         mockContext,
       );
       expect(result.success).toBe(true);
@@ -101,11 +107,11 @@ describe('bash tool', () => {
 
     it('should timeout long running commands', async () => {
       const result = await run_shell_definition.handler(
-        { command: 'sleep 5', timeout: 100 },
+        { command: longSleepCommand, timeout: 100 },
         mockContext,
       );
       expect(result.success).toBe(false);
-      expect(result.output).toContain('timed out');
+      expect(result.output.toLowerCase()).toContain('timed out');
     }, 10000);
   });
 });

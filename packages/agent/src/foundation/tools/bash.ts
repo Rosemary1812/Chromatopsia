@@ -84,6 +84,13 @@ async function run_shell_handler(
   return new Promise<ToolResult>((resolve) => {
     const start = Date.now();
     const isWindows = process.platform === 'win32';
+    let settled = false;
+
+    const finish = (result: ToolResult) => {
+      if (settled) return;
+      settled = true;
+      resolve(result);
+    };
 
     const shell = isWindows ? 'cmd.exe' : '/bin/bash';
     const shellArgs = isWindows ? ['/c', sanitized] : ['-c', sanitized];
@@ -107,7 +114,7 @@ async function run_shell_handler(
 
     proc.on('error', (err) => {
       const elapsed = Date.now() - start;
-      resolve({
+      finish({
         tool_call_id: '',
         output: `Error: ${err.message} (${elapsed}ms)`,
         success: false,
@@ -117,7 +124,7 @@ async function run_shell_handler(
     proc.on('close', (code) => {
       const elapsed = Date.now() - start;
       const output = stdout + (stderr ? `\n${stderr}` : '');
-      resolve({
+      finish({
         tool_call_id: '',
         output: output || `(exited with code ${code}, ${elapsed}ms)`,
         success: code === 0,
@@ -126,8 +133,9 @@ async function run_shell_handler(
 
     // Handle timeout
     setTimeout(() => {
+      if (settled) return;
       proc.kill('SIGTERM');
-      resolve({
+      finish({
         tool_call_id: '',
         output: `Error: Command timed out after ${timeout}ms`,
         success: false,
