@@ -2,6 +2,7 @@
 import { randomUUID } from 'crypto';
 import type { ToolCall, ToolResult, ToolContext, Skill } from '../foundation/types.js';
 import { execute_tool_calls_parallel } from '../foundation/tools/executor.js';
+import type { ToolExecutionObserver } from '../foundation/tools/executor.js';
 import { ApprovalHook } from '../hooks/approval.js';
 export { execute_tool_calls_parallel } from '../foundation/tools/executor.js';
 
@@ -85,6 +86,8 @@ export async function execute_skill(
   skill: Skill,
   context: ToolContext,
   approvalHook?: ApprovalHook,
+  approvalRequestHandler?: import('../foundation/tools/executor.js').ApprovalRequestHandler,
+  observer?: ToolExecutionObserver,
 ): Promise<ToolResult[]> {
   const results: ToolResult[] = [];
 
@@ -101,7 +104,13 @@ export async function execute_skill(
       continue;
     }
 
-    const result = await execute_tool_calls_parallel([tool_call], context, approvalHook);
+    const result = await execute_tool_calls_parallel(
+      [tool_call],
+      context,
+      approvalHook,
+      approvalRequestHandler,
+      observer,
+    );
     const tool_result = result[0];
     results.push(tool_result);
   }

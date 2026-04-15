@@ -130,6 +130,108 @@ export interface ApprovalResponse {
   modified_args?: Record<string, unknown>;
 }
 
+// --- Runtime Events ---
+
+export type RuntimeAgentRole = 'main' | 'worker' | 'reviewer';
+
+export interface RuntimeEventBase {
+  agentId: string;
+  agentRole?: RuntimeAgentRole;
+  timestamp: number;
+}
+
+export interface RuntimeTurnStartedEvent extends RuntimeEventBase {
+  type: 'turn_started';
+  turnId: string;
+  text: string;
+}
+
+export interface RuntimeAssistantChunkEvent extends RuntimeEventBase {
+  type: 'assistant_chunk';
+  turnId: string;
+  chunk: string;
+}
+
+export interface RuntimeAssistantMessageEvent extends RuntimeEventBase {
+  type: 'assistant_message';
+  turnId: string;
+  content: string;
+  toolCalls?: ToolCall[];
+}
+
+export interface RuntimeToolStartedEvent extends RuntimeEventBase {
+  type: 'tool_started';
+  turnId: string;
+  toolCall: ToolCall;
+}
+
+export interface RuntimeToolFinishedEvent extends RuntimeEventBase {
+  type: 'tool_finished';
+  turnId: string;
+  toolCall: ToolCall;
+  result: ToolResult;
+}
+
+export interface RuntimeToolBatchFinishedEvent extends RuntimeEventBase {
+  type: 'tool_batch_finished';
+  turnId: string;
+  toolCalls: ToolCall[];
+  results: ToolResult[];
+}
+
+export interface RuntimeApprovalRequestedEvent extends RuntimeEventBase {
+  type: 'approval_requested';
+  turnId: string;
+  request: ApprovalRequest;
+}
+
+export interface RuntimeApprovalResolvedEvent extends RuntimeEventBase {
+  type: 'approval_resolved';
+  turnId: string;
+  requestId: string;
+  decision: ApprovalDecision;
+}
+
+export interface RuntimeNotificationEvent extends RuntimeEventBase {
+  type: 'notification';
+  message: string;
+}
+
+export interface RuntimeErrorEvent extends RuntimeEventBase {
+  type: 'error';
+  message: string;
+}
+
+export interface RuntimeDebugEvent extends RuntimeEventBase {
+  type: 'debug';
+  message: string;
+}
+
+export interface RuntimeTurnCompletedEvent extends RuntimeEventBase {
+  type: 'turn_completed';
+  turnId: string;
+  content: string;
+}
+
+export type RuntimeEvent =
+  | RuntimeTurnStartedEvent
+  | RuntimeAssistantChunkEvent
+  | RuntimeAssistantMessageEvent
+  | RuntimeToolStartedEvent
+  | RuntimeToolFinishedEvent
+  | RuntimeToolBatchFinishedEvent
+  | RuntimeApprovalRequestedEvent
+  | RuntimeApprovalResolvedEvent
+  | RuntimeNotificationEvent
+  | RuntimeErrorEvent
+  | RuntimeDebugEvent
+  | RuntimeTurnCompletedEvent;
+
+export interface RuntimeSink {
+  emit: (event: RuntimeEvent) => void;
+  requestApproval?: (request: ApprovalRequest) => Promise<ApprovalResponse>;
+}
+
 // --- Skill & Self-Learning ---
 
 export interface Skill {

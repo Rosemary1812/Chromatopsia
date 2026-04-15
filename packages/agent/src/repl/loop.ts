@@ -3,6 +3,7 @@
 // 自学习由离线 LearningWorker 处理，不阻塞主对话。
 
 import * as readline from 'node:readline';
+import { randomUUID } from 'crypto';
 import type {
   LLMProvider,
   LLMResponse,
@@ -11,6 +12,8 @@ import type {
   AgentEvents,
   LogLevel,
   ProviderConfig,
+  RuntimeAgentRole,
+  RuntimeSink,
 } from '../foundation/types.js';
 import { SessionManager } from '../session/manager.js';
 import type { SessionHistory } from '../session/history.js';
@@ -36,6 +39,8 @@ import { handleTruncation } from '../foundation/llm/continuation.js';
 import { shouldCompact, getContextDiagnostics } from '../foundation/llm/token-counter.js';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { createRuntimeEvent, createRuntimeSinkFromAgentEvents } from './runtime.js';
+import type { RuntimeEventInput } from './runtime.js';
 
 // ------------------------------------------------------------
 // Types
@@ -66,6 +71,9 @@ export interface ReplOptions {
   events?: AgentEvents;
   /** Log level for debug output. Default 'error'. */
   logLevel?: LogLevel;
+  /** Runtime metadata for current agent instance. */
+  agentId?: string;
+  agentRole?: RuntimeAgentRole;
 }
 
 export interface RunReplResult {
@@ -73,6 +81,28 @@ export interface RunReplResult {
   handle_user_input: (input: string) => Promise<void>;
   /** Start the REPL (begins reading input) */
   start: () => Promise<never>;
+}
+
+export interface AgentRuntimeOptions {
+  working_dir: string;
+  provider?: 'anthropic' | 'openai';
+  config?: {
+    api_key?: string;
+    base_url?: string;
+    model?: string;
+    max_tokens?: number;
+    timeout?: number;
+  };
+  app_config?: AppConfig;
+  slash_handler?: (input: string, session: Session, skill_reg: SkillRegistry) => boolean;
+  runtime?: RuntimeSink;
+  logLevel?: LogLevel;
+  agentId?: string;
+  agentRole?: RuntimeAgentRole;
+}
+
+export interface AgentRuntimeResult {
+  handle_user_input: (input: string) => Promise<void>;
 }
 
 // ------------------------------------------------------------
@@ -93,26 +123,20 @@ function infer_task_type(input: string): string {
 }
 
 // ------------------------------------------------------------
-// Main: run_repl
+// Main: create_agent_runtime / run_repl
 // ------------------------------------------------------------
 
-/**
- * Run the REPL loop.
- *
- * @param options REPL configuration options
- * @returns RunReplResult with handle_user_input (for testing) and start() to begin
- */
-export async function run_repl(options: ReplOptions): Promise<RunReplResult> {
+export async function create_agent_runtime(options: AgentRuntimeOptions): Promise<AgentRuntimeResult> {
   const {
     working_dir,
     provider: provider_type,
     config,
     app_config,
-    readline_interface: customRl,
-    on_exit,
     slash_handler = default_slash_handler,
-    events = {},
+    runtime,
     logLevel = 'error',
+    agentId = 'main',
+    agentRole = 'main',
   } = options;
 
   // Fall back to env vars if not provided
@@ -127,11 +151,13 @@ export async function run_repl(options: ReplOptions): Promise<RunReplResult> {
   };
 
   const isDebug = logLevel === 'debug';
-
-  function emit<K extends keyof AgentEvents>(event: K, ...args: Parameters<NonNullable<AgentEvents[K]>>) {
-    const handler = events[event] as ((...a: unknown[]) => void) | undefined;
-    handler?.(...args);
-  }
+  const runtimeSink: RuntimeSink = runtime ?? {
+    emit: () => {},
+  };
+  const runtimeMetadata = { agentId, agentRole };
+  const emitRuntime = (event: RuntimeEventInput) => {
+    runtimeSink.emit(createRuntimeEvent(event, runtimeMetadata));
+  };
 
   // ---- Register all built-in tools ----
   register_all_tools();
@@ -185,21 +211,6 @@ export async function run_repl(options: ReplOptions): Promise<RunReplResult> {
     working_directory: working_dir,
   };
 
-  // ---- Readline setup ----
-  let rl: readline.Interface | null = customRl ?? null;
-
-  function make_rl_promise(): Promise<string> {
-    return new Promise<string>((resolve) => {
-      if (!rl) {
-        resolve('');
-        return;
-      }
-      rl.question('> ', (answer) => {
-        resolve(answer ?? '');
-      });
-    });
-  }
-
   // ------------------------------------------------------------
   // handle_user_input — processes one user input turn
   // ------------------------------------------------------------
@@ -211,11 +222,13 @@ export async function run_repl(options: ReplOptions): Promise<RunReplResult> {
   async function handle_user_input(input: string): Promise<void> {
     const trimmed = input.trim();
     if (!trimmed) return;
+    const turnId = randomUUID();
 
+    emitRuntime({ type: 'turn_started', turnId, text: trimmed });
     session.add_message({ role: 'user', content: trimmed });
     let turnTaskType = infer_task_type(trimmed);
 
-    if (await handle_learning_command(trimmed)) {
+    if (await handle_learning_command(trimmed, turnId)) {
       return;
     }
 
@@ -228,24 +241,52 @@ export async function run_repl(options: ReplOptions): Promise<RunReplResult> {
     const matched_skill = skill_reg.trigger_match(trimmed);
     if (matched_skill) {
       turnTaskType = matched_skill.task_type;
-      const results = await execute_skill(matched_skill, tool_context, approval_hook);
+      const skillApprovalRequestHandler = async (request: import('../foundation/types.js').ApprovalRequest) => {
+        emitRuntime({ type: 'approval_requested', turnId, request });
+        const decision = runtimeSink.requestApproval
+          ? await runtimeSink.requestApproval(request)
+          : await approval_hook.wait_for_decision(request.id);
+        emitRuntime({ type: 'approval_resolved', turnId, requestId: request.id, decision: decision.decision });
+        return decision;
+      };
+      const skillToolCalls: import('../foundation/types.js').ToolCall[] = [];
+      const results = await execute_skill(
+        matched_skill,
+        tool_context,
+        approval_hook,
+        skillApprovalRequestHandler,
+        {
+          onToolStart: (toolCall) => {
+            skillToolCalls.push(toolCall);
+            emitRuntime({ type: 'tool_started', turnId, toolCall });
+          },
+          onToolEnd: (toolCall, result) => {
+            emitRuntime({ type: 'tool_finished', turnId, toolCall, result });
+          },
+        },
+      );
+      if (skillToolCalls.length > 0) {
+        emitRuntime({ type: 'tool_batch_finished', turnId, toolCalls: skillToolCalls, results });
+      }
       for (const result of results) {
         if (result.success) {
-          emit('onNotification', `[${matched_skill.name}] Step succeeded`);
+          emitRuntime({ type: 'notification', message: `[${matched_skill.name}] Step succeeded` });
         } else {
-          emit('onNotification', `[${matched_skill.name}] Step failed: ${result.output}`);
+          emitRuntime({ type: 'notification', message: `[${matched_skill.name}] Step failed: ${result.output}` });
         }
       }
+      const skillSummary = `Executed skill: ${matched_skill.name} (${results.length} steps)`;
       session.add_message({
         role: 'assistant',
-        content: `Executed skill: ${matched_skill.name} (${results.length} steps)`,
+        content: skillSummary,
       });
+      emitRuntime({ type: 'assistant_message', turnId, content: skillSummary });
       try {
         await maybeWriteMemory(trimmed, session, provider, memoryIndexStore, memoryTopicStore);
       } catch {
         // best-effort memory write
       }
-      emit('onTurnComplete', `Executed skill: ${matched_skill.name}`);
+      emitRuntime({ type: 'turn_completed', turnId, content: `Executed skill: ${matched_skill.name}` });
       void maybe_schedule_learning(turnTaskType, trimmed);
       return;
     }
@@ -261,7 +302,7 @@ export async function run_repl(options: ReplOptions): Promise<RunReplResult> {
     }
     await handle_normal_turn(
       trimmed, session, provider, skill_reg, approval_hook, tool_context,
-      isDebug, emit, memorySystemMessages, events,
+      isDebug, runtimeSink, turnId, runtimeMetadata, memorySystemMessages,
     );
     try {
       await maybeWriteMemory(trimmed, session, provider, memoryIndexStore, memoryTopicStore);
@@ -271,7 +312,7 @@ export async function run_repl(options: ReplOptions): Promise<RunReplResult> {
     void maybe_schedule_learning(turnTaskType, trimmed);
   }
 
-  async function handle_learning_command(input: string): Promise<boolean> {
+  async function handle_learning_command(input: string, turnId: string): Promise<boolean> {
     if (!input.startsWith('/skill')) return false;
     const parts = input.split(/\s+/).filter(Boolean);
     if (parts.length < 2) return false;
@@ -280,10 +321,10 @@ export async function run_repl(options: ReplOptions): Promise<RunReplResult> {
     if (sub === 'review') {
       const drafts = skill_store.list_drafts();
       if (drafts.length === 0) {
-        emit('onTurnComplete', 'No draft skills pending review.');
+        emitRuntime({ type: 'turn_completed', turnId, content: 'No draft skills pending review.' });
       } else {
         const lines = drafts.map((d) => `- ${d.id}: ${d.name} [${d.task_type}]`);
-        emit('onTurnComplete', ['Draft skills pending review:', ...lines].join('\n'));
+        emitRuntime({ type: 'turn_completed', turnId, content: ['Draft skills pending review:', ...lines].join('\n') });
       }
       return true;
     }
@@ -293,7 +334,7 @@ export async function run_repl(options: ReplOptions): Promise<RunReplResult> {
       if (sub === 'approve') {
         const approved = await skill_store.approve_draft(id);
         if (!approved) {
-          emit('onTurnComplete', `Draft "${id}" not found.`);
+          emitRuntime({ type: 'turn_completed', turnId, content: `Draft "${id}" not found.` });
           return true;
         }
         skill_reg.register_manifest({
@@ -311,11 +352,11 @@ export async function run_repl(options: ReplOptions): Promise<RunReplResult> {
           source_path: `.chromatopsia/skills/user/${approved.id}.md`,
         });
         skill_reg.register(approved);
-        emit('onTurnComplete', `Draft approved and published: ${approved.name}`);
+        emitRuntime({ type: 'turn_completed', turnId, content: `Draft approved and published: ${approved.name}` });
         return true;
       }
       const rejected = await skill_store.reject_draft(id);
-      emit('onTurnComplete', rejected ? `Draft rejected: ${id}` : `Draft "${id}" not found.`);
+      emitRuntime({ type: 'turn_completed', turnId, content: rejected ? `Draft rejected: ${id}` : `Draft "${id}" not found.` });
       return true;
     }
 
@@ -326,14 +367,68 @@ export async function run_repl(options: ReplOptions): Promise<RunReplResult> {
     if (!learningWorker) return;
     const result = await learningWorker.onTurnCompleted(taskType, userInput);
     if (result.triggered && result.draftName) {
-      emit('onNotification', `Draft skill generated: ${result.draftName}`);
+      emitRuntime({ type: 'notification', message: `Draft skill generated: ${result.draftName}` });
     }
     if (!reminderEnabled || reminderShown >= reminderMaxPerSession) return;
     const drafts = typeof skill_store.list_drafts === 'function' ? skill_store.list_drafts() : [];
     if (drafts.length > 0) {
       reminderShown++;
-      emit('onNotification', `[Learning] ${drafts.length} draft(s) pending review`);
+      emitRuntime({ type: 'notification', message: `[Learning] ${drafts.length} draft(s) pending review` });
     }
+  }
+
+  return {
+    handle_user_input,
+  };
+}
+
+/**
+ * Run the REPL loop.
+ *
+ * @param options REPL configuration options
+ * @returns RunReplResult with handle_user_input (for testing) and start() to begin
+ */
+export async function run_repl(options: ReplOptions): Promise<RunReplResult> {
+  const {
+    working_dir,
+    readline_interface: customRl,
+    on_exit,
+    events = {},
+    provider,
+    config,
+    app_config,
+    slash_handler,
+    logLevel,
+    agentId,
+    agentRole,
+  } = options;
+
+const runtime = createRuntimeSinkFromAgentEvents(events);
+
+  const agentRuntime = await create_agent_runtime({
+    working_dir,
+    provider,
+    config,
+    app_config,
+    slash_handler,
+    runtime,
+    logLevel,
+    agentId,
+    agentRole,
+  });
+
+  let rl: readline.Interface | null = customRl ?? null;
+
+  function make_rl_promise(): Promise<string> {
+    return new Promise<string>((resolve) => {
+      if (!rl) {
+        resolve('');
+        return;
+      }
+      rl.question('> ', (answer) => {
+        resolve(answer ?? '');
+      });
+    });
   }
 
   // ------------------------------------------------------------
@@ -345,11 +440,20 @@ export async function run_repl(options: ReplOptions): Promise<RunReplResult> {
   let turnPromise: Promise<void> = Promise.resolve();
 
   async function main_loop(): Promise<never> {
-    if (isDebug) emit('onDebug', 'main_loop started');
+    const isDebug = logLevel === 'debug';
+    if (isDebug) {
+      runtime.emit(createRuntimeEvent({ type: 'debug', message: 'main_loop started' }, {
+        agentId: agentId ?? 'main',
+        agentRole: agentRole ?? 'main',
+      }));
+    }
 
     if (!rl) {
       if (!process.stdin.isTTY) {
-        emit('onError', 'REPL requires an interactive terminal (TTY).');
+        runtime.emit(createRuntimeEvent({ type: 'error', message: 'REPL requires an interactive terminal (TTY).' }, {
+          agentId: agentId ?? 'main',
+          agentRole: agentRole ?? 'main',
+        }));
         process.exit(1);
       }
 
@@ -364,12 +468,15 @@ export async function run_repl(options: ReplOptions): Promise<RunReplResult> {
       });
     }
 
-    emit('onNotification', 'REPL ready. Type /help for commands.');
+    runtime.emit(createRuntimeEvent({ type: 'notification', message: 'REPL ready. Type /help for commands.' }, {
+      agentId: agentId ?? 'main',
+      agentRole: agentRole ?? 'main',
+    }));
 
     while (running) {
       try {
         const input_value = await make_rl_promise();
-        turnPromise = turnPromise.then(() => handle_user_input(input_value));
+        turnPromise = turnPromise.then(() => agentRuntime.handle_user_input(input_value));
         await turnPromise;
       } catch {
         // readline error — exit
@@ -382,7 +489,7 @@ export async function run_repl(options: ReplOptions): Promise<RunReplResult> {
   }
 
   return {
-    handle_user_input,
+    handle_user_input: agentRuntime.handle_user_input,
     start: main_loop,
   };
 }
@@ -403,9 +510,10 @@ async function handle_normal_turn(
   approval_hook: ApprovalHook,
   tool_context: import('../foundation/types.js').ToolContext,
   isDebug: boolean,
-  emit: <K extends keyof AgentEvents>(event: K, ...args: Parameters<NonNullable<AgentEvents[K]>>) => void,
+  runtime: RuntimeSink,
+  turnId: string,
+  runtimeMetadata: { agentId: string; agentRole?: RuntimeAgentRole },
   extra_system_messages: import('../foundation/types.js').Message[] = [],
-  events: AgentEvents = {},
 ): Promise<void> {
   const task_type = infer_task_type(input);
   const MAX_TOOL_ROUNDS = 16;
@@ -417,15 +525,18 @@ async function handle_normal_turn(
 
   // Build initial LLM context
   let ctx = build_llm_context(session, task_type, null, skill_reg, extra_system_messages);
+  const emitRuntime = (event: RuntimeEventInput) => {
+    runtime.emit(createRuntimeEvent(event, runtimeMetadata));
+  };
 
   // Tool execution loop
   while (true) {
     round++;
     if (round > MAX_TOOL_ROUNDS) {
       const msg = `Tool loop exceeded max rounds (${MAX_TOOL_ROUNDS})`;
-      emit('onError', msg);
+      emitRuntime({ type: 'error', message: msg });
       session.add_message({ role: 'assistant', content: `Error: ${msg}` });
-      emit('onTurnComplete', `Error: ${msg}`);
+      emitRuntime({ type: 'turn_completed', turnId, content: `Error: ${msg}` });
       return;
     }
 
@@ -441,11 +552,11 @@ async function handle_normal_turn(
 
     try {
       if (isDebug) {
-        emit('onDebug', `ctx.messages count: ${ctx.messages.length}`);
+        emitRuntime({ type: 'debug', message: `ctx.messages count: ${ctx.messages.length}` });
         for (const m of ctx.messages) {
-          emit('onDebug', `msg role=${m.role} content_len=${m.content.length}`);
+          emitRuntime({ type: 'debug', message: `msg role=${m.role} content_len=${m.content.length}` });
         }
-        emit('onDebug', 'calling chat_stream with retry support...');
+        emitRuntime({ type: 'debug', message: 'calling chat_stream with retry support...' });
       }
 
       // Wrap streaming with exponential backoff retry (max 3 attempts)
@@ -459,7 +570,7 @@ async function handle_normal_turn(
         let timeoutId: NodeJS.Timeout;
         const timeoutPromise = new Promise<{ timedOut: true }>((resolve) => {
           timeoutId = setTimeout(() => {
-            emit('onDebug', 'Stream timeout after 60s, forcing close...');
+            emitRuntime({ type: 'debug', message: 'Stream timeout after 60s, forcing close...' });
             resolve({ timedOut: true });
           }, STREAM_TIMEOUT_MS);
         });
@@ -470,9 +581,9 @@ async function handle_normal_turn(
 
         if ('timedOut' in raceResult) {
           const msg = 'Stream timeout (60s) — server did not respond';
-          emit('onError', msg);
+          emitRuntime({ type: 'error', message: msg });
           session.add_message({ role: 'assistant', content: `Error: ${msg}` });
-          emit('onTurnComplete', `Error: ${msg}`);
+          emitRuntime({ type: 'turn_completed', turnId, content: `Error: ${msg}` });
           return;
         }
 
@@ -484,14 +595,14 @@ async function handle_normal_turn(
 
         const chunk = result.value;
         ctx.appendAssistantChunk(chunk);
-        emit('onStreamChunk', chunk);
+        emitRuntime({ type: 'assistant_chunk', turnId, chunk });
       }
-      emit('onStreamChunk', '\n');
+      emitRuntime({ type: 'assistant_chunk', turnId, chunk: '\n' });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      emit('onError', `LLM Error: ${msg}`);
+      emitRuntime({ type: 'error', message: `LLM Error: ${msg}` });
       session.add_message({ role: 'assistant', content: `Error: ${msg}` });
-      emit('onTurnComplete', `Error: ${msg}`);
+      emitRuntime({ type: 'turn_completed', turnId, content: `Error: ${msg}` });
       return;
     }
 
@@ -499,9 +610,9 @@ async function handle_normal_turn(
     // If llm_response is null/undefined, treat as error.
     if (!llm_response) {
       const msg = 'LLM stream returned no response (possible server error)';
-      emit('onError', msg);
+      emitRuntime({ type: 'error', message: msg });
       session.add_message({ role: 'assistant', content: `Error: ${msg}` });
-      emit('onTurnComplete', `Error: ${msg}`);
+      emitRuntime({ type: 'turn_completed', turnId, content: `Error: ${msg}` });
       return;
     }
 
@@ -514,11 +625,11 @@ async function handle_normal_turn(
         llm_response,
       );
       if (isDebug && assistantContent !== llm_response.content) {
-        emit('onDebug', `Response auto-continued (truncation recovery): +${assistantContent.length - llm_response.content.length} chars`);
+        emitRuntime({ type: 'debug', message: `Response auto-continued (truncation recovery): +${assistantContent.length - llm_response.content.length} chars` });
       }
     } catch (err) {
       if (isDebug) {
-        emit('onDebug', `Truncation recovery failed: ${err instanceof Error ? err.message : String(err)}`);
+        emitRuntime({ type: 'debug', message: `Truncation recovery failed: ${err instanceof Error ? err.message : String(err)}` });
       }
       // Fall back to original content if continuation fails
       assistantContent = llm_response.content || '';
@@ -533,7 +644,8 @@ async function handle_normal_turn(
     // No tool_calls → output text and end turn
     if (!toolCalls || toolCalls.length === 0) {
       session.add_message({ role: 'assistant', content: finalContent });
-      emit('onTurnComplete', finalContent);
+      emitRuntime({ type: 'assistant_message', turnId, content: finalContent });
+      emitRuntime({ type: 'turn_completed', turnId, content: finalContent });
       break;
     }
 
@@ -543,13 +655,30 @@ async function handle_normal_turn(
       content: finalContent,
       tool_calls: toolCalls,
     });
+    emitRuntime({ type: 'assistant_message', turnId, content: finalContent, toolCalls });
 
     // Execute tool calls
+    const approvalRequestHandler = async (request: import('../foundation/types.js').ApprovalRequest) => {
+      emitRuntime({ type: 'approval_requested', turnId, request });
+      const decision = runtime.requestApproval
+        ? await runtime.requestApproval(request)
+        : await approval_hook.wait_for_decision(request.id);
+      emitRuntime({ type: 'approval_resolved', turnId, requestId: request.id, decision: decision.decision });
+      return decision;
+    };
     const results = await execute_tool_calls_parallel(
       toolCalls,
       tool_context,
       approval_hook,
-      events.onApprovalRequest,
+      approvalRequestHandler,
+      {
+        onToolStart: (toolCall) => {
+          emitRuntime({ type: 'tool_started', turnId, toolCall });
+        },
+        onToolEnd: (toolCall, result) => {
+          emitRuntime({ type: 'tool_finished', turnId, toolCall, result });
+        },
+      },
     );
     const toolSignature = JSON.stringify(
       toolCalls.map((tc) => ({ name: tc.name, arguments: tc.arguments })),
@@ -566,16 +695,12 @@ async function handle_normal_turn(
     lastToolOutputSignature = toolOutputSignature;
     if (noProgressRounds >= MAX_NO_PROGRESS_ROUNDS) {
       const msg = 'Tool loop stopped: repeated identical tool calls/results with no progress';
-      emit('onError', msg);
+      emitRuntime({ type: 'error', message: msg });
       session.add_message({ role: 'assistant', content: `Error: ${msg}` });
-      emit('onTurnComplete', `Error: ${msg}`);
+      emitRuntime({ type: 'turn_completed', turnId, content: `Error: ${msg}` });
       return;
     }
-    emit('onToolBatchEnd', toolCalls, results);
-    for (let i = 0; i < toolCalls.length; i++) {
-      emit('onToolStart', toolCalls[i]);
-      emit('onToolEnd', toolCalls[i], results[i]);
-    }
+    emitRuntime({ type: 'tool_batch_finished', turnId, toolCalls, results });
 
     // Inject tool results to session for persistence and next LLM context
     // The context will be rebuilt in the next loop iteration via build_llm_context
@@ -592,7 +717,7 @@ async function handle_normal_turn(
     if (shouldCompact(session.messages, provider.get_model(), 0.8)) {
       if (isDebug) {
         const diagnostics = getContextDiagnostics(session.messages, provider.get_model());
-        emit('onDebug', `Proactive compaction: fill rate ${diagnostics.fillPercentage}`);
+        emitRuntime({ type: 'debug', message: `Proactive compaction: fill rate ${diagnostics.fillPercentage}` });
       }
       await session.compact();
     }

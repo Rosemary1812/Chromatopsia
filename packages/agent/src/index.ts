@@ -3,7 +3,9 @@
 
 export * from './foundation/types.js';
 export { run_repl } from './repl/loop.js';
-export type { ReplOptions, RunReplResult } from './repl/loop.js';
+export { create_agent_runtime } from './repl/loop.js';
+export type { ReplOptions, RunReplResult, AgentRuntimeOptions, AgentRuntimeResult } from './repl/loop.js';
+export { createRuntimeEvent, createRuntimeSinkFromAgentEvents } from './repl/runtime.js';
 export { createProvider } from './foundation/llm/index.js';
 export { ToolRegistry, registry } from './foundation/tools/registry.js';
 export { register_all_tools } from './foundation/tools/index.js';

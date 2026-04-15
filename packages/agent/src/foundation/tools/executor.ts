@@ -17,6 +17,11 @@ export type ApprovalRequestHandler = (
   request: ApprovalRequest,
 ) => Promise<ApprovalResponse>;
 
+export interface ToolExecutionObserver {
+  onToolStart?: (toolCall: ToolCall) => void;
+  onToolEnd?: (toolCall: ToolCall, result: ToolResult) => void;
+}
+
 /**
  * Resolve a relative or absolute path within the working directory sandbox.
  * Throws if the resolved path escapes the sandbox.
@@ -150,6 +155,7 @@ export async function execute_tool_calls_parallel(
   context: ToolContext,
   approvalHook?: ApprovalHook,
   approvalRequestHandler?: ApprovalRequestHandler,
+  observer?: ToolExecutionObserver,
 ): Promise<ToolResult[]> {
   if (tool_calls.length === 0) {
     return [];
@@ -186,7 +192,12 @@ export async function execute_tool_calls_parallel(
   }
 
   // safe tools: parallel
-  const safePromises = safe.map((tc) => execute_tool(tc, context));
+  const safePromises = safe.map(async (tc) => {
+    observer?.onToolStart?.(tc);
+    const result = await execute_tool(tc, context);
+    observer?.onToolEnd?.(tc, result);
+    return result;
+  });
   const safeResults = await Promise.all(safePromises);
 
   // warning/dangerous: serial
@@ -194,7 +205,10 @@ export async function execute_tool_calls_parallel(
   for (const guardedItem of guarded) {
     const { toolCall: tc, request } = guardedItem;
     if (!approvalHook) {
-      guardedResults.push(await execute_tool(tc, context));
+      observer?.onToolStart?.(tc);
+      const result = await execute_tool(tc, context);
+      observer?.onToolEnd?.(tc, result);
+      guardedResults.push(result);
       continue;
     }
 
@@ -203,17 +217,23 @@ export async function execute_tool_calls_parallel(
       : await approvalHook.wait_for_decision(request.id);
 
     if (decision.decision === 'reject') {
-      guardedResults.push({
+      const rejectedResult = {
         tool_call_id: tc.id,
         output: `Approval rejected for ${tc.name}`,
         success: false,
-      });
+      };
+      guardedResults.push(rejectedResult);
     } else if (decision.decision === 'edit' && decision.modified_args) {
-      guardedResults.push(
-        await execute_tool({ ...tc, arguments: decision.modified_args }, context),
-      );
+      const editedToolCall = { ...tc, arguments: decision.modified_args };
+      observer?.onToolStart?.(editedToolCall);
+      const result = await execute_tool(editedToolCall, context);
+      observer?.onToolEnd?.(editedToolCall, result);
+      guardedResults.push(result);
     } else {
-      guardedResults.push(await execute_tool(tc, context));
+      observer?.onToolStart?.(tc);
+      const result = await execute_tool(tc, context);
+      observer?.onToolEnd?.(tc, result);
+      guardedResults.push(result);
     }
   }
 
