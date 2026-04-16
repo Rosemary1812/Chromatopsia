@@ -1,4 +1,4 @@
-![Chromatopsia Banner](.github/assets/README-banner.png)
+![Chromatopsia Banner](.github/assets/banner.png)
 # Chromatopsia
 
 Chromatopsia 是一个面向终端的 coding agent 项目，目标是在本地开发环境中提供接近真实工程协作的代理式编程体验。
@@ -80,7 +80,7 @@ TUI 目前仍在持续打磨中，重点优化方向包括：
 
 ## 界面预览
 
-![Chromatopsia TUI](.github/assets/README-tui.png)
+![Chromatopsia TUI](.github/assets/tui.png)
 
 ### 3. 工具系统
 
