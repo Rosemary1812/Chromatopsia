@@ -161,5 +161,30 @@ describe('glob tool', () => {
       await unlink(path.join(tmpDir, 'file2.md'));
       await rmdir(tmpDir);
     });
+
+    it('should skip common heavy directories during recursive search', async () => {
+      const tmpDir = path.join(process.cwd(), '.test_glob_ignore_tmp');
+      const nodeModulesDir = path.join(tmpDir, 'node_modules');
+      const srcDir = path.join(tmpDir, 'src');
+      await mkdir(nodeModulesDir, { recursive: true });
+      await mkdir(srcDir, { recursive: true });
+      await writeFile(path.join(nodeModulesDir, 'package.json'), '{}');
+      await writeFile(path.join(srcDir, 'package.json'), '{}');
+
+      const result = await glob_definition.handler(
+        { pattern: '**/package.json', path: tmpDir },
+        mockContext,
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.output).toContain(path.join('src', 'package.json'));
+      expect(result.output).not.toContain(path.join('node_modules', 'package.json'));
+
+      await unlink(path.join(nodeModulesDir, 'package.json'));
+      await unlink(path.join(srcDir, 'package.json'));
+      await rmdir(nodeModulesDir);
+      await rmdir(srcDir);
+      await rmdir(tmpDir);
+    });
   });
 });

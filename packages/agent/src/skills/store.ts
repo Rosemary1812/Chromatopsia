@@ -5,7 +5,7 @@ import type { Skill, SkillManifestEntry } from '../foundation/types.js';
 import { parseSkillMarkdown, serializeSkillMarkdown } from './skill-parser.js';
 
 const CHROMATOPSIA_DIR = '.chromatopsia';
-const SKILLS_INDEX_FILE = 'skills.json';
+const SKILLS_INDEX_FILE = 'index.json';
 const SKILLS_DIR = 'skills';
 const USER_DIR = 'user';
 const DRAFTS_DIR = 'drafts';
@@ -14,6 +14,15 @@ interface SkillsIndex {
   version: number;
   updated_at: string;
   skills: SkillManifestEntry[];
+}
+
+interface SkillStoreOptions {
+  indexPath?: string;
+  runtimeSkillsRoot?: string;
+  builtinSkillsRoots?: string[];
+  enableBuiltin?: boolean;
+  homeDir?: string;
+  cwd?: string;
 }
 
 function normalizePath(inputPath: string): string {
@@ -28,12 +37,25 @@ export class SkillStore {
   private builtinSkillsRoots: string[];
   private enableBuiltin: boolean;
 
-  constructor(homeDir?: string, cwd?: string) {
-    const baseHome = homeDir ?? os.homedir();
+  constructor(homeDirOrOptions?: string | SkillStoreOptions, cwd?: string) {
+    if (typeof homeDirOrOptions === 'object' && homeDirOrOptions !== null) {
+      const baseHome = homeDirOrOptions.homeDir ?? os.homedir();
+      const baseCwd = homeDirOrOptions.cwd ?? process.cwd();
+      this.runtimeSkillsRoot = homeDirOrOptions.runtimeSkillsRoot ?? path.join(baseHome, CHROMATOPSIA_DIR, SKILLS_DIR);
+      this.indexPath = homeDirOrOptions.indexPath ?? path.join(this.runtimeSkillsRoot, SKILLS_INDEX_FILE);
+      this.enableBuiltin = homeDirOrOptions.enableBuiltin ?? true;
+      this.builtinSkillsRoots = homeDirOrOptions.builtinSkillsRoots ?? [
+        path.join(baseCwd, 'skills', 'builtin'),
+        path.join(baseCwd, 'packages', 'agent', 'skills', 'builtin'),
+      ];
+      return;
+    }
+
+    const baseHome = homeDirOrOptions ?? os.homedir();
     const baseCwd = cwd ?? process.cwd();
-    this.indexPath = path.join(baseHome, CHROMATOPSIA_DIR, SKILLS_INDEX_FILE);
+    this.indexPath = path.join(baseHome, CHROMATOPSIA_DIR, SKILLS_DIR, SKILLS_INDEX_FILE);
     this.runtimeSkillsRoot = path.join(baseHome, CHROMATOPSIA_DIR, SKILLS_DIR);
-    this.enableBuiltin = homeDir === undefined;
+    this.enableBuiltin = homeDirOrOptions === undefined;
     this.builtinSkillsRoots = [
       path.join(baseCwd, 'skills', 'builtin'),
       path.join(baseCwd, 'packages', 'agent', 'skills', 'builtin'),
@@ -302,7 +324,8 @@ export class SkillStore {
     const relative = normalized.startsWith(`${CHROMATOPSIA_DIR}/`)
       ? normalized.slice(CHROMATOPSIA_DIR.length + 1)
       : normalized;
-    return path.join(path.dirname(this.indexPath), relative);
+    const storageRoot = path.dirname(this.runtimeSkillsRoot);
+    return path.join(storageRoot, relative);
   }
 
   async #writeIndex(): Promise<void> {

@@ -350,6 +350,10 @@ export interface AppConfig {
     auto_approve_safe?: boolean;
     timeout_seconds?: number;
   };
+  storage?: {
+    mode?: 'project' | 'home';
+    root_dir?: string;
+  };
   session?: {
     max_history_tokens?: number;
     compress_threshold?: number;

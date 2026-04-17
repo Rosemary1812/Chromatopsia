@@ -49,7 +49,6 @@ export function App({ store, runtime, approvalController, model, cwd }: AppProps
     }
   });
 
-  const latestItem = state.transcript.at(-1) ?? null;
   const latestTool = useMemo(
     () => Object.values(state.toolActivity).sort((left, right) => right.timestamp - left.timestamp)[0],
     [state.toolActivity],
@@ -77,7 +76,7 @@ export function App({ store, runtime, approvalController, model, cwd }: AppProps
     <Box flexDirection="column" width="100%">
       {state.transcript.length === 0 ? <Header model={model} cwd={cwd} mode="idle" version="1.0.0" /> : null}
       <Box flexDirection="column" marginTop={1} rowGap={1}>
-        {latestItem ? <Transcript items={[latestItem]} mode="idle" activeToolLabel={null} /> : null}
+        {state.transcript.length > 0 ? <Transcript items={state.transcript} mode="idle" activeToolLabel={null} /> : null}
         {state.streaming ? (
           <StreamingIndicator
             spinner={spinnerFrames[spinnerFrame]}

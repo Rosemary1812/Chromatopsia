@@ -17,9 +17,13 @@ export class TurnEventStore {
   private eventsPath: string;
   private statePath: string;
 
-  constructor(homeDir?: string) {
-    const baseHome = homeDir ?? os.homedir();
-    this.baseDir = path.join(baseHome, CHROMATOPSIA_DIR, LEARNING_DIR);
+  constructor(options?: string | { baseDir?: string; homeDir?: string }) {
+    if (typeof options === 'object' && options?.baseDir) {
+      this.baseDir = options.baseDir;
+    } else {
+      const baseHome = typeof options === 'string' ? options : options?.homeDir ?? os.homedir();
+      this.baseDir = path.join(baseHome, CHROMATOPSIA_DIR, LEARNING_DIR);
+    }
     this.eventsPath = path.join(this.baseDir, EVENTS_FILE);
     this.statePath = path.join(this.baseDir, STATE_FILE);
   }

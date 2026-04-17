@@ -104,6 +104,24 @@ approval:
     expect(config.approval?.auto_approve_safe).toBe(true);
   });
 
+
+  it('loads storage config', async () => {
+    const configPath = resolve(TEST_DIR, 'config-storage.yaml');
+    await writeFile(configPath, `
+provider: anthropic
+anthropic:
+  api_key: sk-ant-key
+storage:
+  mode: project
+  root_dir: .chromatopsia
+  migrate_legacy_on_startup: true
+  fallback_to_home: false
+`);
+    const config = await load_config(configPath);
+    expect(config.storage?.mode).toBe('project');
+    expect(config.storage?.root_dir).toBe('.chromatopsia');
+  });
+
   it('loads learning config with batch_turns and reminder', async () => {
     const configPath = resolve(TEST_DIR, 'config-learning.yaml');
     await writeFile(configPath, `

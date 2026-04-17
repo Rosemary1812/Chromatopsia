@@ -173,7 +173,9 @@ export class ChromatopsiaCLI extends EventEmitter {
             this.tty.writeDebug(message, this.config.debug);
           },
           onStreamChunk: (chunk: string) => {
-            streamedThisTurn = true;
+            if (chunk.trim().length > 0) {
+              streamedThisTurn = true;
+            }
             this.tty.write(chunk);
           },
           onToolStart: (toolCall) => {

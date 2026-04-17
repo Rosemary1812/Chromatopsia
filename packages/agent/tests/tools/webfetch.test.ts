@@ -179,6 +179,31 @@ describe('webfetch tool', () => {
       globalThis.fetch = original_fetch;
     });
 
+    it('should truncate overly long markdown content', async () => {
+      const longParagraph = 'A'.repeat(25_000);
+      const html = `<html><head><title>Long Page</title></head><body><p>${longParagraph}</p></body></html>`;
+
+      const original_fetch = globalThis.fetch;
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        headers: new Map([['content-length', String(html.length)]]),
+        text: () => Promise.resolve(html),
+      } as unknown as Response);
+
+      const result = await webfetch_definition.handler(
+        { url: 'https://example.com/long' },
+        mockContext,
+      );
+      expect(result.success).toBe(true);
+      const parsed = JSON.parse(result.output);
+      expect(parsed.content.length).toBeLessThanOrEqual(20_128);
+      expect(parsed.content).toContain('[Truncated: content too long');
+
+      globalThis.fetch = original_fetch;
+    });
+
     // Timeout test is skipped because AbortController + fake fetch mock
     // interaction is complex. The timeout logic is straightforward:
     // it uses setTimeout + AbortController which works correctly in real usage.

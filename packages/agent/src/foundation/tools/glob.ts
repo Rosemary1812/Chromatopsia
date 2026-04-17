@@ -32,16 +32,42 @@ function matches_pattern(filename: string, pattern: string): boolean {
   }
 }
 
+const IGNORED_DIRECTORY_NAMES = new Set([
+  '.git',
+  'node_modules',
+  'dist',
+  'build',
+  '.next',
+  '.turbo',
+  'coverage',
+]);
+const MAX_RESULTS = 200;
+const MAX_VISITED_DIRECTORIES = 2000;
+const MAX_RECURSION_DEPTH = 24;
+
 async function glob_recursive(
   dirPath: string,
   patternParts: string[],
   depth: number,
-  maxDepth: number,
   results: string[],
+  state: { visitedDirectories: number; truncated: boolean },
 ): Promise<void> {
+  if (state.truncated || results.length >= MAX_RESULTS) {
+    state.truncated = true;
+    return;
+  }
+
+  if (depth > MAX_RECURSION_DEPTH || state.visitedDirectories >= MAX_VISITED_DIRECTORIES) {
+    state.truncated = true;
+    return;
+  }
+
   if (depth >= patternParts.length) {
     // Matched all pattern parts, add the path
     results.push(dirPath);
+    if (results.length >= MAX_RESULTS) {
+      state.truncated = true;
+    }
     return;
   }
 
@@ -50,6 +76,7 @@ async function glob_recursive(
 
   let entries: string[];
   try {
+    state.visitedDirectories += 1;
     entries = await readdir(dirPath);
   } catch {
     return;
@@ -65,19 +92,27 @@ async function glob_recursive(
       continue;
     }
 
+    if (isDir && IGNORED_DIRECTORY_NAMES.has(entry)) {
+      continue;
+    }
+
     if (!matches_pattern(entry, currentPattern)) continue;
 
     if (isLastSegment) {
       results.push(fullPath);
+      if (results.length >= MAX_RESULTS) {
+        state.truncated = true;
+        return;
+      }
     } else if (isDir) {
       if (currentPattern === '**') {
         // ** matches:
         // 1. Recurse with next pattern part (directory contents matched by **)
-        await glob_recursive(fullPath, patternParts, depth + 1, maxDepth, results);
+        await glob_recursive(fullPath, patternParts, depth + 1, results, state);
         // 2. Recurse with same pattern part (subdirs matched by **)
-        await glob_recursive(fullPath, patternParts, depth, maxDepth, results);
+        await glob_recursive(fullPath, patternParts, depth, results, state);
       } else {
-        await glob_recursive(fullPath, patternParts, depth + 1, maxDepth, results);
+        await glob_recursive(fullPath, patternParts, depth + 1, results, state);
       }
     } else if (currentPattern === '**') {
       // ** matched a file - try remaining pattern against filename
@@ -86,6 +121,10 @@ async function glob_recursive(
         // Last remaining segment - check if filename matches
         if (matches_pattern(entry, remainingPattern[0])) {
           results.push(fullPath);
+          if (results.length >= MAX_RESULTS) {
+            state.truncated = true;
+            return;
+          }
         }
       } else if (remainingPattern.length > 1) {
         // Multiple remaining segments - can't match a file
@@ -122,20 +161,20 @@ async function glob_handler(
     return { tool_call_id: '', output: `Sandbox violation: ${e}`, success: false };
   }
 
-  const { parts, recursive } = parse_glob_pattern(pattern);
+  const { parts } = parse_glob_pattern(pattern);
   const results: string[] = [];
+  const state = { visitedDirectories: 0, truncated: false };
 
-  // Determine max depth
-  const maxDepth = recursive ? parts.length : parts.length;
-
-  await glob_recursive(resolvedPath, parts, 0, maxDepth, results);
+  await glob_recursive(resolvedPath, parts, 0, results, state);
 
   // Sort results for consistent output
   results.sort();
 
   return {
     tool_call_id: '',
-    output: results.join('\n'),
+    output: state.truncated
+      ? `${results.join('\n')}\n\n[Truncated: stopped after ${results.length} matches / ${state.visitedDirectories} directories scanned]`.trim()
+      : results.join('\n'),
     success: true,
   };
 }

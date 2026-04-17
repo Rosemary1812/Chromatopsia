@@ -29,6 +29,7 @@ async function main() {
 
   const runtime = await create_agent_runtime({
     working_dir: repoRoot,
+    config_path: configPath,
     provider: config.provider,
     config: {
       api_key: config.provider === 'anthropic'

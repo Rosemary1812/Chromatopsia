@@ -37,10 +37,9 @@ import { LearningWorker } from '../learning/worker.js';
 import { retryStreamWithBackoff } from '../foundation/llm/retry-handler.js';
 import { handleTruncation } from '../foundation/llm/continuation.js';
 import { shouldCompact, getContextDiagnostics } from '../foundation/llm/token-counter.js';
-import * as os from 'node:os';
-import * as path from 'node:path';
 import { createRuntimeEvent, createRuntimeSinkFromAgentEvents } from './runtime.js';
 import type { RuntimeEventInput } from './runtime.js';
+import { resolveStoragePaths } from '../storage/paths.js';
 
 // ------------------------------------------------------------
 // Types
@@ -87,6 +86,7 @@ export interface RunReplResult {
 
 export interface AgentRuntimeOptions {
   working_dir: string;
+  config_path?: string;
   provider?: 'anthropic' | 'openai';
   config?: {
     api_key?: string;
@@ -132,6 +132,7 @@ function infer_task_type(input: string): string {
 export async function create_agent_runtime(options: AgentRuntimeOptions): Promise<AgentRuntimeResult> {
   const {
     working_dir,
+    config_path,
     provider: provider_type,
     config,
     app_config,
@@ -167,15 +168,25 @@ export async function create_agent_runtime(options: AgentRuntimeOptions): Promis
 
   // ---- Initialize components ----
   const provider = createProvider(resolvedProvider, resolvedConfig);
-  const session_manager = new SessionManager(working_dir, provider);
+  const storagePaths = resolveStoragePaths({
+    workingDir: working_dir,
+    appConfig: app_config,
+    configPath: config_path,
+  });
+  const session_manager = new SessionManager(storagePaths.sessionsDir, provider);
   const session = session_manager.create_session(working_dir);
   const skill_reg = new SkillRegistry();
-  const skill_store = new SkillStore();
+  const skill_store = new SkillStore({
+    indexPath: storagePaths.skillsIndexPath,
+    runtimeSkillsRoot: storagePaths.skillsDir,
+    builtinSkillsRoots: storagePaths.builtinSkillsRoots,
+    enableBuiltin: true,
+    cwd: storagePaths.projectRoot,
+  });
   const approval_hook = new ApprovalHook();
-  const memoryDir = path.join(os.homedir(), '.chromatopsia', 'memory');
-  const memoryIndexStore = new MemoryIndexStore(memoryDir);
-  const memoryTopicStore = new MemoryTopicStore(memoryDir);
-  const turnEventStore = new TurnEventStore();
+  const memoryIndexStore = new MemoryIndexStore(storagePaths.memoryDir);
+  const memoryTopicStore = new MemoryTopicStore(storagePaths.memoryDir);
+  const turnEventStore = new TurnEventStore({ baseDir: storagePaths.learningDir });
 
   // Load persisted skills into registry
   await skill_store.load();

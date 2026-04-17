@@ -35,6 +35,10 @@ approval:
   auto_approve_safe: true
   timeout_seconds: 300
 
+storage:
+  mode: project
+  root_dir: .chromatopsia
+
 # Session 上下文压缩
 session:
   max_history_tokens: 4500

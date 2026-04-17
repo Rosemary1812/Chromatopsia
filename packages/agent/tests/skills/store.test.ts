@@ -29,12 +29,12 @@ describe('SkillStore', () => {
     await rm(TEST_DIR, { recursive: true, force: true });
   });
 
-  it('saves markdown file and writes skills.json index', async () => {
+  it('saves markdown file and writes project-local skills index', async () => {
     const store = new SkillStore(TEST_DIR);
     const skill = makeSkill({ id: 's1', name: 'Git Rebase' });
     await store.save(skill);
 
-    const indexRaw = await readFile(resolve(TEST_DIR, '.chromatopsia', 'skills.json'), 'utf-8');
+    const indexRaw = await readFile(resolve(TEST_DIR, '.chromatopsia', 'skills', 'index.json'), 'utf-8');
     const index = JSON.parse(indexRaw) as { skills: Array<{ id: string; source_path: string }> };
     expect(index.skills.some((s) => s.id === 's1')).toBe(true);
 
@@ -44,7 +44,7 @@ describe('SkillStore', () => {
     expect(mdRaw).toContain('name: Git Rebase');
   });
 
-  it('loads skills from skills.json index + markdown files', async () => {
+  it('loads skills from index + markdown files', async () => {
     const store = new SkillStore(TEST_DIR);
     const skill = makeSkill({ id: 's1', name: 'Load Me' });
     await store.save(skill);
@@ -66,11 +66,11 @@ describe('SkillStore', () => {
     expect(loaded.getAll()).toHaveLength(0);
   });
 
-  it('migrates legacy skills.json array to markdown files', async () => {
-    const chromaDir = resolve(TEST_DIR, '.chromatopsia');
-    await mkdir(chromaDir, { recursive: true });
+  it('migrates legacy index array to markdown files', async () => {
+    const skillsDir = resolve(TEST_DIR, '.chromatopsia', 'skills');
+    await mkdir(skillsDir, { recursive: true });
     const legacy = [makeSkill({ id: 'legacy-1', name: 'Legacy Skill' })];
-    await writeFile(resolve(chromaDir, 'skills.json'), JSON.stringify(legacy, null, 2), 'utf-8');
+    await writeFile(resolve(skillsDir, 'index.json'), JSON.stringify(legacy, null, 2), 'utf-8');
 
     const store = new SkillStore(TEST_DIR);
     await store.load();
@@ -94,7 +94,7 @@ describe('SkillStore', () => {
 
   it('loads runtime markdown files even if index was stale', async () => {
     const runtimeUserDir = resolve(TEST_DIR, '.chromatopsia', 'skills', 'user');
-    const chromaDir = resolve(TEST_DIR, '.chromatopsia');
+    const skillsDir = resolve(TEST_DIR, '.chromatopsia', 'skills');
     await mkdir(runtimeUserDir, { recursive: true });
     await writeFile(
       resolve(runtimeUserDir, 'manual.md'),
@@ -127,7 +127,7 @@ success_count: 0
       'utf-8',
     );
     await writeFile(
-      resolve(chromaDir, 'skills.json'),
+      resolve(skillsDir, 'index.json'),
       JSON.stringify({ version: 1, updated_at: new Date().toISOString(), skills: [] }, null, 2),
       'utf-8',
     );

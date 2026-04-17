@@ -10,6 +10,7 @@ import * as hooksApprovalModule from '../../src/hooks/approval.js';
 import * as learningWorkerModule from '../../src/learning/worker.js';
 import * as executorModule from '../../src/repl/executor.js';
 import * as slashModule from '../../src/repl/slash.js';
+import * as storagePathsModule from '../../src/storage/paths.js';
 
 function create_mock_session(): Session {
   const messages: Message[] = [];
@@ -103,6 +104,45 @@ describe('repl/runtime', () => {
     mock_llm_responses = [];
   });
 
+  it('wires runtime stores to project-local storage paths', async () => {
+    const session = create_mock_session();
+    const provider = create_mock_provider();
+    setup_common_mocks(session, provider);
+
+    const storagePaths = {
+      projectRoot: '/repo',
+      root: '/repo/.chromatopsia',
+      sessionsDir: '/repo/.chromatopsia/sessions',
+      sessionsIndexPath: '/repo/.chromatopsia/sessions/index.json',
+      learningDir: '/repo/.chromatopsia/learning',
+      turnEventsPath: '/repo/.chromatopsia/learning/turn-events.jsonl',
+      learningStatePath: '/repo/.chromatopsia/learning/state.json',
+      memoryDir: '/repo/.chromatopsia/memory',
+      memoryIndexPath: '/repo/.chromatopsia/memory/MEMORY.md',
+      skillsDir: '/repo/.chromatopsia/skills',
+      skillsIndexPath: '/repo/.chromatopsia/skills/index.json',
+      userSkillsDir: '/repo/.chromatopsia/skills/user',
+      draftSkillsDir: '/repo/.chromatopsia/skills/drafts',
+      logsDir: '/repo/.chromatopsia/logs',
+      builtinSkillsRoots: ['/repo/packages/agent/skills/builtin'],
+    };
+
+    vi.spyOn(storagePathsModule, 'resolveStoragePaths').mockReturnValue(storagePaths as ReturnType<typeof storagePathsModule.resolveStoragePaths>);
+    await create_agent_runtime({
+      working_dir: '/repo/packages/agent',
+      provider: 'anthropic',
+      config: { api_key: 'test' },
+      runtime: { emit: vi.fn() },
+    });
+
+    expect(storagePathsModule.resolveStoragePaths).toHaveBeenCalled();
+    expect(sessionModule.SessionManager).toHaveBeenCalledWith('/repo/.chromatopsia/sessions', expect.anything());
+    expect(skillStoreModule.SkillStore).toHaveBeenCalledWith(expect.objectContaining({
+      indexPath: '/repo/.chromatopsia/skills/index.json',
+      runtimeSkillsRoot: '/repo/.chromatopsia/skills',
+    }));
+  });
+
   it('maps runtime events back to AgentEvents callbacks', async () => {
     const onTurnComplete = vi.fn();
     const onStreamChunk = vi.fn();
@@ -127,7 +167,7 @@ describe('repl/runtime', () => {
       onNotification,
       onDebug,
       onApprovalRequest,
-    } satisfies AgentEvents, { agentId: 'main', agentRole: 'main' });
+    } satisfies AgentEvents);
 
     sink.emit(createRuntimeEvent({ type: 'assistant_chunk', turnId: 't1', chunk: 'x' }, { agentId: 'main', agentRole: 'main' }));
     sink.emit(createRuntimeEvent({ type: 'assistant_message', turnId: 't1', content: 'done', toolCalls: [{ id: 'tc-1', name: 'Read', arguments: {} }] }, { agentId: 'main', agentRole: 'main' }));

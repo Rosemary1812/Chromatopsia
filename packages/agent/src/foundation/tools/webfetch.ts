@@ -24,6 +24,7 @@ interface FetchResult {
 
 const FETCH_TIMEOUT_MS = 15000;
 const MAX_HTML_SIZE = 500 * 1024; // 500KB
+const MAX_MARKDOWN_CHARS = 20_000;
 
 /**
  * Simple language detection based on character frequency.
@@ -60,6 +61,14 @@ function clean_html(html: string): string {
     .replace(/<!--[\s\S]*?-->/g, '')
     .replace(/\s{2,}/g, ' ')
     .trim();
+}
+
+function truncate_markdown(markdown: string): string {
+  if (markdown.length <= MAX_MARKDOWN_CHARS) {
+    return markdown;
+  }
+
+  return `${markdown.slice(0, MAX_MARKDOWN_CHARS)}\n\n[Truncated: content too long, showing first ${MAX_MARKDOWN_CHARS} characters]`;
 }
 
 // ============================================================
@@ -175,6 +184,8 @@ async function webfetch_handler(
   if (prompt) {
     markdown = `【Prompt: ${prompt}】\n\n${markdown}`;
   }
+
+  markdown = truncate_markdown(markdown);
 
   const result: FetchResult = {
     title,
