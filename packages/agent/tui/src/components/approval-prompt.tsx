@@ -1,14 +1,15 @@
 import { Box, Text, useInput } from 'ink';
 import type { ApprovalRequest } from '@chromatopsia/agent';
-import { TUI_THEME } from '../types.js';
+import type { TuiThemePalette } from '../types.js';
 
 type ApprovalPromptProps = {
   request: ApprovalRequest;
   onApprove: () => void;
   onReject: () => void;
+  theme: TuiThemePalette;
 };
 
-export function ApprovalPrompt({ request, onApprove, onReject }: ApprovalPromptProps) {
+export function ApprovalPrompt({ request, onApprove, onReject, theme }: ApprovalPromptProps) {
   useInput((input) => {
     const normalized = input.trim().toLowerCase();
     if (normalized === 'y') {
@@ -27,17 +28,17 @@ export function ApprovalPrompt({ request, onApprove, onReject }: ApprovalPromptP
     <Box
       flexDirection="column"
       borderStyle="round"
-      borderColor={TUI_THEME.warning}
+      borderColor={theme.warning}
       paddingX={1}
     >
-      <Text bold color={TUI_THEME.warning}>
+      <Text bold color={theme.warning}>
         {'⚠️ Agent wants to run a high-risk tool: '}
-        <Text color={TUI_THEME.textPrimary}>{request.tool_name}</Text>
+        <Text color={theme.textPrimary}>{request.tool_name}</Text>
       </Text>
-      {args ? <Text color={TUI_THEME.textDim}>{args}</Text> : null}
-      <Text bold color={TUI_THEME.warning}>
+      {args ? <Text color={theme.textDim}>{args}</Text> : null}
+      <Text bold color={theme.warning}>
         {'Allow execution? ['}
-        <Text color={TUI_THEME.success}>{'y'}</Text>
+        <Text color={theme.success}>{'y'}</Text>
         {'/N]'}
       </Text>
     </Box>

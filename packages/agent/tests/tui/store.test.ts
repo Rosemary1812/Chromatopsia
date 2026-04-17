@@ -3,6 +3,7 @@ import type { ApprovalRequest, RuntimeEvent, ToolCall, ToolResult } from '../../
 import { executeBuiltinCommand, formatBuiltinCommandHelp, matchBuiltinCommand } from '../../tui/src/commands.js';
 import { highlightCodeLine, parseMarkdown } from '../../tui/src/components/markdown.js';
 import { TuiStore } from '../../tui/src/store.js';
+import { getTheme } from '../../tui/src/types.js';
 
 function createToolCall(overrides: Partial<ToolCall> = {}): ToolCall {
   return {
@@ -66,6 +67,12 @@ describe('tui commands', () => {
 });
 
 describe('TuiStore', () => {
+  it('defaults to dark theme mode', () => {
+    const store = new TuiStore();
+
+    expect(store.getState().themeMode).toBe('dark');
+  });
+
   it('builds transcript from runtime events', () => {
     const store = new TuiStore();
     const toolCall = createToolCall();
@@ -250,7 +257,7 @@ describe('TuiStore', () => {
   });
 
   it('tokenizes fenced code lines with syntax colors', () => {
-    const segments = highlightCodeLine("const greeting = 'Hello World!';", 'js');
+    const segments = highlightCodeLine("const greeting = 'Hello World!';", getTheme('dark'), 'js');
 
     expect(segments.map((segment) => segment.text).join('')).toBe("const greeting = 'Hello World!';");
     expect(segments.some((segment) => segment.text === 'const' && typeof segment.color === 'string')).toBe(true);

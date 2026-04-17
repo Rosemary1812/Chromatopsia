@@ -1,9 +1,10 @@
 import { Box, Text } from 'ink';
-import { TUI_THEME } from '../types.js';
+import type { TuiThemePalette } from '../types.js';
 
 type FooterProps = {
   model: string;
   tokenCount?: number;
+  theme: TuiThemePalette;
 };
 
 function formatTokenCount(tokenCount: number): string {
@@ -13,14 +14,14 @@ function formatTokenCount(tokenCount: number): string {
   return `${tokenCount} tokens`;
 }
 
-export function Footer({ model, tokenCount = 0 }: FooterProps) {
+export function Footer({ model, tokenCount = 0, theme }: FooterProps) {
   return (
     <Box paddingX={2} width="100%">
       <Box flexGrow={1} justifyContent="flex-start">
-        <Text color={TUI_THEME.textDim}>{model}</Text>
+        <Text color={theme.textDim}>{model}</Text>
       </Box>
       <Box justifyContent="flex-end">
-        <Text color={TUI_THEME.textDim}>{formatTokenCount(tokenCount)}</Text>
+        <Text color={theme.textDim}>{formatTokenCount(tokenCount)}</Text>
       </Box>
     </Box>
   );

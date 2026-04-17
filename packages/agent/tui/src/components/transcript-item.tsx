@@ -1,5 +1,5 @@
 import { Box, Text } from 'ink';
-import { TUI_THEME, type TranscriptItem } from '../types.js';
+import type { TranscriptItem, TuiThemePalette } from '../types.js';
 import { Markdown } from './markdown.js';
 
 const ASSISTANT_MARKER = '\u25CF';
@@ -10,6 +10,7 @@ const INFO_MARKER = '\u00B7';
 
 type TranscriptItemProps = {
   item: TranscriptItem;
+  theme: TuiThemePalette;
 };
 
 function summarizeToolArguments(item: Extract<TranscriptItem, { kind: 'tool' }>): string | null {
@@ -36,21 +37,21 @@ function summarizeToolArguments(item: Extract<TranscriptItem, { kind: 'tool' }>)
     .join(' · ');
 }
 
-export function TranscriptItemView({ item }: TranscriptItemProps) {
+export function TranscriptItemView({ item, theme }: TranscriptItemProps) {
   switch (item.kind) {
     case 'user':
       return (
         <Box columnGap={1} width="100%">
-          <Text bold color={TUI_THEME.textPrimary}>{USER_MARKER}</Text>
-          <Text color={TUI_THEME.textPrimary}>{item.text}</Text>
+          <Text bold color={theme.textPrimary}>{USER_MARKER}</Text>
+          <Text color={theme.textPrimary}>{item.text}</Text>
         </Box>
       );
     case 'assistant': {
       return (
         <Box flexDirection="column" width="100%">
           <Box columnGap={1}>
-            <Text color={TUI_THEME.primary}>{ASSISTANT_MARKER}</Text>
-            <Markdown text={item.text} />
+            <Text color={theme.primary}>{ASSISTANT_MARKER}</Text>
+            <Markdown text={item.text} theme={theme} />
           </Box>
         </Box>
       );
@@ -59,29 +60,29 @@ export function TranscriptItemView({ item }: TranscriptItemProps) {
       return (
         <Box flexDirection="column" width="100%">
           <Box columnGap={1}>
-            <Text color={TUI_THEME.textDim}>{TOOL_MARKER}</Text>
-            <Text color={TUI_THEME.textDim}>
+            <Text color={theme.textDim}>{TOOL_MARKER}</Text>
+            <Text color={theme.textDim}>
               {item.summary ?? `${item.name} ${item.status === 'running' ? 'in progress' : 'completed'}`}
             </Text>
           </Box>
           {summarizeToolArguments(item) ? (
-            <Text color={TUI_THEME.textDim}>{`└─ ${summarizeToolArguments(item)}`}</Text>
+            <Text color={theme.textDim}>{`└─ ${summarizeToolArguments(item)}`}</Text>
           ) : null}
         </Box>
       );
     case 'notification':
       return (
         <Box columnGap={1}>
-          <Text color={item.level === 'error' ? TUI_THEME.danger : TUI_THEME.info}>
+          <Text color={item.level === 'error' ? theme.danger : theme.info}>
             {item.level === 'error' ? ERROR_MARKER : INFO_MARKER}
           </Text>
-          <Text color={item.level === 'error' ? TUI_THEME.danger : TUI_THEME.textDim}>{item.text}</Text>
+          <Text color={item.level === 'error' ? theme.danger : theme.textDim}>{item.text}</Text>
         </Box>
       );
     case 'command_help':
       return (
         <Box flexDirection="column">
-          <Markdown text={item.text} />
+          <Markdown text={item.text} theme={theme} />
         </Box>
       );
   }

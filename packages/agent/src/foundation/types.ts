@@ -453,6 +453,9 @@ export interface AppConfig {
       max_per_session?: number;
     };
   };
+  tui?: {
+    theme?: 'dark' | 'light';
+  };
 }
 
 export interface TurnEvent {

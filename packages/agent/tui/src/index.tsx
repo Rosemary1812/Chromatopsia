@@ -6,6 +6,7 @@ import { resolve } from 'node:path';
 import { ApprovalController } from './approval-controller.js';
 import { App } from './app.js';
 import { TuiStore } from './store.js';
+import { resolveThemeMode } from './types.js';
 
 async function main() {
   const configPath = resolve(import.meta.dirname, '../../config.yaml');
@@ -53,6 +54,9 @@ async function main() {
   });
 
   store = new TuiStore({
+    initialState: {
+      themeMode: resolveThemeMode(config.tui?.theme),
+    },
     clearConversation: () => {
       runtime.clear_conversation();
     },

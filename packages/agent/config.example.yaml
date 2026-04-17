@@ -56,6 +56,9 @@ storage:
   mode: project
   root_dir: .chromatopsia
 
+tui:
+  theme: dark
+
 # Session 上下文压缩
 session:
   max_history_tokens: 4500

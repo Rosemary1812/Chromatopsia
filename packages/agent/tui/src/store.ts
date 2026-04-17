@@ -2,17 +2,20 @@ import type { ApprovalResponse, RuntimeEvent, ToolCall, ToolResult } from '@chro
 import { executeBuiltinCommand, formatBuiltinCommandHelp, listBuiltinCommands } from './commands.js';
 import { summarizeToolResult as defaultSummarizeToolResult } from './summarize.js';
 import type {
+  TuiThemeMode,
   RuntimeEventHandler,
   TranscriptItem,
   TuiState,
   TuiStoreLike,
   TuiStoreOptions,
 } from './types.js';
+import { DEFAULT_TUI_THEME_MODE } from './types.js';
 
 function createInitialState(initialState?: Partial<TuiState>): TuiState {
   return {
     transcript: [],
     inputMode: 'normal',
+    themeMode: DEFAULT_TUI_THEME_MODE,
     currentTurnId: null,
     streaming: false,
     approvalRequest: null,
@@ -55,6 +58,15 @@ export class TuiStore implements TuiStoreLike {
     this.state = {
       ...this.state,
       pendingInput: value,
+    };
+    this.emitChange();
+  }
+
+  setThemeMode(mode: TuiThemeMode): void {
+    if (this.state.themeMode === mode) return;
+    this.state = {
+      ...this.state,
+      themeMode: mode,
     };
     this.emitChange();
   }

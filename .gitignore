@@ -84,3 +84,6 @@ test-checklist.md
 # Agent runtime data (privacy)
 packages/agent/.chromatopsia/
 packages/agent/tests/storage/
+
+# Personal todo lists
+theme-todo-list.md

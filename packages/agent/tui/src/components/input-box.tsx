@@ -1,13 +1,14 @@
 import { Box, Text, useInput } from 'ink';
 import { useEffect, useState } from 'react';
 import { listBuiltinCommands } from '../commands.js';
-import { TUI_THEME } from '../types.js';
+import type { TuiThemePalette } from '../types.js';
 
 type InputBoxProps = {
   value: string;
   disabled?: boolean;
   onChange: (value: string) => void;
   onSubmit: (nextValue?: string) => void;
+  theme: TuiThemePalette;
 };
 
 function buildVisibleCommands(input: string) {
@@ -16,11 +17,11 @@ function buildVisibleCommands(input: string) {
   return commands.filter((command) => command.name.includes(query)).slice(0, 5);
 }
 
-function HighlightedInput({ value }: { value: string }) {
+function HighlightedInput({ value, theme }: { value: string; theme: TuiThemePalette }) {
   if (!value) {
     const placeholder = 'Type a message or / for commands';
     return (
-      <Text color={TUI_THEME.textDim}>
+      <Text color={theme.textDim}>
         <Text inverse>{placeholder[0]}</Text>
         {placeholder.slice(1)}
       </Text>
@@ -32,9 +33,9 @@ function HighlightedInput({ value }: { value: string }) {
   const after = value.slice(highlightLength);
 
   return (
-    <Text color={TUI_THEME.textPrimary}>
+    <Text color={theme.textPrimary}>
       {before ? (
-        <Text bold inverse color={TUI_THEME.primary}>
+        <Text bold inverse color={theme.primary}>
           {before}
         </Text>
       ) : null}
@@ -44,7 +45,7 @@ function HighlightedInput({ value }: { value: string }) {
   );
 }
 
-export function InputBox({ value, disabled = false, onChange, onSubmit }: InputBoxProps) {
+export function InputBox({ value, disabled = false, onChange, onSubmit, theme }: InputBoxProps) {
   const visibleCommands = buildVisibleCommands(value);
   const pickerVisible = value.startsWith('/');
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -99,17 +100,17 @@ export function InputBox({ value, disabled = false, onChange, onSubmit }: InputB
   return (
     <Box flexDirection="column" rowGap={1}>
       {pickerVisible ? (
-        <Box flexDirection="column" borderStyle="single" borderColor={TUI_THEME.surfaceBorder} paddingX={1}>
-          <Text bold color={TUI_THEME.primary}>Commands</Text>
+        <Box flexDirection="column" borderStyle="single" borderColor={theme.surfaceBorder} paddingX={1}>
+          <Text bold color={theme.primary}>Commands</Text>
           {visibleCommands.map((command, index) => (
             <Box key={command.name}>
-              <Text bold color={index === selectedIndex ? TUI_THEME.highlightedText : TUI_THEME.textDim}>
+              <Text bold color={index === selectedIndex ? theme.highlightedText : theme.textDim}>
                 {index === selectedIndex ? '❯ ' : '  '}
               </Text>
-              <Text bold color={index === selectedIndex ? TUI_THEME.highlightedText : TUI_THEME.textPrimary}>
+              <Text bold color={index === selectedIndex ? theme.highlightedText : theme.textPrimary}>
                 {`/${command.name}`}
               </Text>
-              <Text color={TUI_THEME.textDim}>{` ${command.description}`}</Text>
+              <Text color={theme.textDim}>{` ${command.description}`}</Text>
             </Box>
           ))}
         </Box>
@@ -120,11 +121,11 @@ export function InputBox({ value, disabled = false, onChange, onSubmit }: InputB
         borderBottom
         borderLeft={false}
         borderRight={false}
-        borderColor={disabled ? TUI_THEME.textDim : TUI_THEME.surfaceBorder}
+        borderColor={disabled ? theme.textDim : theme.surfaceBorder}
         columnGap={1}
       >
-        <Text color={TUI_THEME.textPrimary}>{'❯'}</Text>
-        <HighlightedInput value={value} />
+        <Text color={theme.textPrimary}>{'❯'}</Text>
+        <HighlightedInput value={value} theme={theme} />
       </Box>
     </Box>
   );

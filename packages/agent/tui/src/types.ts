@@ -6,6 +6,27 @@ import type {
 } from "@chromatopsia/agent";
 
 export type TuiInputMode = "normal" | "approval";
+export type TuiThemeMode = "dark" | "light";
+
+export interface TuiThemePalette {
+  primary: string;
+  highlightedText: string;
+  textPrimary: string;
+  textMuted: string;
+  textDim: string;
+  secondaryBackground: string;
+  surfaceBorder: string;
+  info: string;
+  success: string;
+  warning: string;
+  danger: string;
+  syntaxKeyword: string;
+  syntaxString: string;
+  syntaxNumber: string;
+  syntaxTitle: string;
+  syntaxLiteral: string;
+  syntaxComment: string;
+}
 
 export type TranscriptItem =
   | {
@@ -65,6 +86,7 @@ export interface ToolActivityState {
 export interface TuiState {
   transcript: TranscriptItem[];
   inputMode: TuiInputMode;
+  themeMode: TuiThemeMode;
   currentTurnId: string | null;
   streaming: boolean;
   approvalRequest: ApprovalRequest | null;
@@ -97,6 +119,7 @@ export interface BuiltinCommand {
 export interface TuiStoreLike {
   getState: () => TuiState;
   setPendingInput: (value: string) => void;
+  setThemeMode: (mode: TuiThemeMode) => void;
   clearTranscript: () => void;
   appendCommandHelp: () => void;
   hideCommandHelp: () => void;
@@ -117,27 +140,58 @@ export interface TuiStoreOptions extends TuiCommandContext {
 
 export type RuntimeEventHandler = (event: RuntimeEvent) => void;
 
-export const TUI_THEME = {
-  primary: "#b01e1e",
-  highlightedText: "#c6e7ff",
-  textPrimary: "#f6f3f8",
-  textMuted: "#aab4be",
-  textDim: "#7f8b96",
-  secondaryBackground: "#1d2630",
-  surfaceBorder: "#5f5268",
-  info: "#7ec8ff",
-  success: "#7dd3a7",
-  warning: "#f6c177",
-  danger: "#ef8891",
-  syntaxKeyword: "#ff9e64",
-  syntaxString: "#9ece6a",
-  syntaxNumber: "#e0af68",
-  syntaxTitle: "#7aa2f7",
-  syntaxLiteral: "#bb9af7",
-  syntaxComment: "#6b7280",
+export const DEFAULT_TUI_THEME_MODE: TuiThemeMode = "dark";
+
+export const TUI_THEMES: Record<TuiThemeMode, TuiThemePalette> = {
+  dark: {
+    primary: "#c43a3a",
+    highlightedText: "#ffd7d7",
+    textPrimary: "#f5f7fa",
+    textMuted: "#c8d0d8",
+    textDim: "#8f99a3",
+    secondaryBackground: "#171a1f",
+    surfaceBorder: "#694343",
+    info: "#58b0ff",
+    success: "#42bf83",
+    warning: "#d79a34",
+    danger: "#ea6666",
+    syntaxKeyword: "#ff9e64",
+    syntaxString: "#9ece6a",
+    syntaxNumber: "#e0af68",
+    syntaxTitle: "#7aa2f7",
+    syntaxLiteral: "#bb9af7",
+    syntaxComment: "#6b7280",
+  },
+  light: {
+    primary: "#a61b1b",
+    highlightedText: "#7c1111",
+    textPrimary: "#16181b",
+    textMuted: "#4d5863",
+    textDim: "#6f7a85",
+    secondaryBackground: "#f2f4f7",
+    surfaceBorder: "#d8b8b8",
+    info: "#0f6cbd",
+    success: "#1f8a4c",
+    warning: "#9a6700",
+    danger: "#c62828",
+    syntaxKeyword: "#a2460f",
+    syntaxString: "#2f7d32",
+    syntaxNumber: "#9a5a13",
+    syntaxTitle: "#2457c5",
+    syntaxLiteral: "#7c3aed",
+    syntaxComment: "#7a808a",
+  },
 } as const;
 
 export const BRAND_LOGO = [" ▐▛███▜▌", " ███████", " ▋ ▋ ▐ ▐"] as const;
+
+export function getTheme(mode: TuiThemeMode): TuiThemePalette {
+  return TUI_THEMES[mode];
+}
+
+export function resolveThemeMode(value: string | undefined): TuiThemeMode {
+  return value === "light" ? "light" : "dark";
+}
 
 export function getModeLabel(mode: "idle" | "working" | "approval"): string {
   switch (mode) {
@@ -150,14 +204,17 @@ export function getModeLabel(mode: "idle" | "working" | "approval"): string {
   }
 }
 
-export function getModeColor(mode: "idle" | "working" | "approval"): string {
+export function getModeColor(
+  mode: "idle" | "working" | "approval",
+  theme: TuiThemePalette,
+): string {
   switch (mode) {
     case "working":
-      return TUI_THEME.primary;
+      return theme.primary;
     case "approval":
-      return TUI_THEME.warning;
+      return theme.warning;
     default:
-      return TUI_THEME.textMuted;
+      return theme.textMuted;
   }
 }
 

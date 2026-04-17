@@ -1,10 +1,11 @@
 import { Box, Text } from 'ink';
 import hljs from 'highlight.js';
 import { marked } from 'marked';
-import { TUI_THEME } from '../types.js';
+import type { TuiThemePalette } from '../types.js';
 
 type MarkdownProps = {
   text: string;
+  theme: TuiThemePalette;
 };
 
 type MarkdownSpan =
@@ -39,14 +40,16 @@ type TokenLike = {
   items?: TokenLike[];
 };
 
-const HLJS_CLASS_COLOR_MAP: Array<[pattern: RegExp, color: string]> = [
-  [/hljs-(keyword|operator|selector-tag|selector-pseudo|template-tag|name)/, TUI_THEME.syntaxKeyword],
-  [/hljs-(string|regexp|char|subst)/, TUI_THEME.syntaxString],
-  [/hljs-(number|symbol|bullet)/, TUI_THEME.syntaxNumber],
-  [/hljs-(title|section|attr|attribute|property|variable|params)/, TUI_THEME.syntaxTitle],
-  [/hljs-(literal|built_in|type)/, TUI_THEME.syntaxLiteral],
-  [/hljs-(comment|quote)/, TUI_THEME.syntaxComment],
-];
+function getHighlightClassColorMap(theme: TuiThemePalette): Array<[pattern: RegExp, color: string]> {
+  return [
+    [/hljs-(keyword|operator|selector-tag|selector-pseudo|template-tag|name)/, theme.syntaxKeyword],
+    [/hljs-(string|regexp|char|subst)/, theme.syntaxString],
+    [/hljs-(number|symbol|bullet)/, theme.syntaxNumber],
+    [/hljs-(title|section|attr|attribute|property|variable|params)/, theme.syntaxTitle],
+    [/hljs-(literal|built_in|type)/, theme.syntaxLiteral],
+    [/hljs-(comment|quote)/, theme.syntaxComment],
+  ];
+}
 
 export function parseMarkdown(text: string): MarkdownBlock[] {
   const normalized = text.replace(/\r\n/g, '\n');
@@ -169,15 +172,15 @@ function decodeHtmlEntities(text: string): string {
     .replace(/&#39;/g, "'");
 }
 
-function colorForHighlightClasses(classes: string[]): string | undefined {
+function colorForHighlightClasses(classes: string[], theme: TuiThemePalette): string | undefined {
   const joined = classes.join(' ');
-  for (const [pattern, color] of HLJS_CLASS_COLOR_MAP) {
+  for (const [pattern, color] of getHighlightClassColorMap(theme)) {
     if (pattern.test(joined)) return color;
   }
   return undefined;
 }
 
-function tokenizeHighlightedHtml(value: string): CodeSegment[] {
+function tokenizeHighlightedHtml(value: string, theme: TuiThemePalette): CodeSegment[] {
   const segments: CodeSegment[] = [];
   const stack: string[] = [];
   const tagPattern = /<span class="([^"]*)">|<\/span>/g;
@@ -187,7 +190,7 @@ function tokenizeHighlightedHtml(value: string): CodeSegment[] {
     const index = match.index ?? 0;
     if (index > lastIndex) {
       const text = decodeHtmlEntities(value.slice(lastIndex, index));
-      if (text) segments.push({ text, color: colorForHighlightClasses(stack) });
+      if (text) segments.push({ text, color: colorForHighlightClasses(stack, theme) });
     }
 
     if (match[0] === '</span>') {
@@ -201,50 +204,50 @@ function tokenizeHighlightedHtml(value: string): CodeSegment[] {
 
   if (lastIndex < value.length) {
     const text = decodeHtmlEntities(value.slice(lastIndex));
-    if (text) segments.push({ text, color: colorForHighlightClasses(stack) });
+    if (text) segments.push({ text, color: colorForHighlightClasses(stack, theme) });
   }
 
   return segments;
 }
 
-export function highlightCodeLine(line: string, lang?: string): CodeSegment[] {
+export function highlightCodeLine(line: string, theme: TuiThemePalette, lang?: string): CodeSegment[] {
   if (!line) return [{ text: ' ' }];
 
   try {
     const result = lang && hljs.getLanguage(lang)
       ? hljs.highlight(line, { language: lang, ignoreIllegals: true })
       : hljs.highlightAuto(line);
-    const segments = tokenizeHighlightedHtml(result.value);
+    const segments = tokenizeHighlightedHtml(result.value, theme);
     return segments.length > 0 ? segments : [{ text: line }];
   } catch {
     return [{ text: line }];
   }
 }
 
-function renderSpans(spans: MarkdownSpan[]) {
+function renderSpans(spans: MarkdownSpan[], theme: TuiThemePalette) {
   return spans.map((span, index) => {
     switch (span.kind) {
       case 'strong':
         return (
-          <Text key={index} bold color={TUI_THEME.highlightedText}>
+          <Text key={index} bold color={theme.highlightedText}>
             {span.text}
           </Text>
         );
       case 'emphasis':
         return (
-          <Text key={index} italic color={TUI_THEME.textMuted}>
+          <Text key={index} italic color={theme.textMuted}>
             {span.text}
           </Text>
         );
       case 'code':
         return (
-          <Text key={index} color={TUI_THEME.highlightedText}>
+          <Text key={index} color={theme.highlightedText}>
             {` ${span.text} `}
           </Text>
         );
       case 'link':
         return (
-          <Text key={index} underline color={TUI_THEME.info}>
+          <Text key={index} underline color={theme.info}>
             {span.text || span.href || ''}
           </Text>
         );
@@ -255,18 +258,18 @@ function renderSpans(spans: MarkdownSpan[]) {
   });
 }
 
-function renderBlock(block: MarkdownBlock, index: number) {
+function renderBlock(block: MarkdownBlock, index: number, theme: TuiThemePalette) {
   switch (block.kind) {
     case 'heading':
       return (
-        <Text key={index} bold color={TUI_THEME.primary}>
-          {renderSpans(block.spans)}
+        <Text key={index} bold color={theme.primary}>
+          {renderSpans(block.spans, theme)}
         </Text>
       );
     case 'paragraph':
       return (
-        <Text key={index} color={TUI_THEME.textPrimary}>
-          {renderSpans(block.spans)}
+        <Text key={index} color={theme.textPrimary}>
+          {renderSpans(block.spans, theme)}
         </Text>
       );
     case 'list':
@@ -274,8 +277,8 @@ function renderBlock(block: MarkdownBlock, index: number) {
         <Box key={index} flexDirection="column">
           {block.items.map((item, itemIndex) => (
             <Box key={`${index}-${itemIndex}`}>
-              <Text color={TUI_THEME.primary}>{`${item.marker} `}</Text>
-              <Text color={TUI_THEME.textPrimary}>{renderSpans(item.spans)}</Text>
+              <Text color={theme.primary}>{`${item.marker} `}</Text>
+              <Text color={theme.textPrimary}>{renderSpans(item.spans, theme)}</Text>
             </Box>
           ))}
         </Box>
@@ -285,8 +288,8 @@ function renderBlock(block: MarkdownBlock, index: number) {
         <Box key={index} flexDirection="column" marginLeft={1}>
           {block.lines.map((line, lineIndex) => (
             <Box key={`${index}-${lineIndex}`}>
-              <Text color={TUI_THEME.textDim}>{'\u2502 '}</Text>
-              <Text color={TUI_THEME.textMuted}>{renderSpans(line)}</Text>
+              <Text color={theme.textDim}>{'\u2502 '}</Text>
+              <Text color={theme.textMuted}>{renderSpans(line, theme)}</Text>
             </Box>
           ))}
         </Box>
@@ -294,11 +297,11 @@ function renderBlock(block: MarkdownBlock, index: number) {
     case 'code':
       return (
         <Box key={index} flexDirection="column" marginLeft={1}>
-          <Text color={TUI_THEME.textDim}>{`[${block.lang || 'text'}]`}</Text>
+          <Text color={theme.textDim}>{`[${block.lang || 'text'}]`}</Text>
           {block.lines.map((line, lineIndex) => (
-            <Text key={`${index}-${lineIndex}`} color={TUI_THEME.textPrimary}>
-              {highlightCodeLine(line, block.lang).map((segment, segmentIndex) => (
-                <Text key={`${index}-${lineIndex}-${segmentIndex}`} color={segment.color ?? TUI_THEME.textPrimary}>
+            <Text key={`${index}-${lineIndex}`} color={theme.textPrimary}>
+              {highlightCodeLine(line, theme, block.lang).map((segment, segmentIndex) => (
+                <Text key={`${index}-${lineIndex}-${segmentIndex}`} color={segment.color ?? theme.textPrimary}>
                   {segment.text}
                 </Text>
               ))}
@@ -308,19 +311,19 @@ function renderBlock(block: MarkdownBlock, index: number) {
       );
     case 'rule':
       return (
-        <Text key={index} color={TUI_THEME.textDim}>
+        <Text key={index} color={theme.textDim}>
           {'\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500'}
         </Text>
       );
   }
 }
 
-export function Markdown({ text }: MarkdownProps) {
+export function Markdown({ text, theme }: MarkdownProps) {
   const blocks = parseMarkdown(text);
 
   return (
     <Box flexDirection="column">
-      {blocks.map((block, index) => renderBlock(block, index))}
+      {blocks.map((block, index) => renderBlock(block, index, theme))}
     </Box>
   );
 }

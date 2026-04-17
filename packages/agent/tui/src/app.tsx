@@ -9,7 +9,7 @@ import { ApprovalPrompt } from './components/approval-prompt.js';
 import { Footer } from './components/footer.js';
 import { useTuiStore } from './hooks.js';
 import type { TuiStore } from './store.js';
-import { TUI_THEME } from './types.js';
+import { getTheme, type TuiThemePalette } from './types.js';
 
 type AppProps = {
   store: TuiStore;
@@ -22,8 +22,10 @@ type AppProps = {
 export function App({ store, runtime, approvalController, model, cwd }: AppProps) {
   const { exit } = useApp();
   const state = useTuiStore(store, (snapshot) => snapshot);
+  const theme = getTheme(state.themeMode);
   const [spinnerFrame, setSpinnerFrame] = useState(0);
   const [shimmerFrame, setShimmerFrame] = useState(0);
+  const mode = state.inputMode === 'approval' ? 'approval' : state.streaming ? 'working' : 'idle';
 
   const handleSubmit = useCallback(async (nextValue?: string) => {
     const input = (nextValue ?? state.pendingInput).trim();
@@ -74,19 +76,20 @@ export function App({ store, runtime, approvalController, model, cwd }: AppProps
 
   return (
     <Box flexDirection="column" width="100%">
-      {state.transcript.length === 0 ? <Header model={model} cwd={cwd} mode="idle" version="1.0.0" /> : null}
+      {state.transcript.length === 0 ? <Header model={model} cwd={cwd} mode={mode} version="1.0.0" theme={theme} /> : null}
       <Box flexDirection="column" marginTop={1} rowGap={1}>
-        {state.transcript.length > 0 ? <Transcript items={state.transcript} mode="idle" activeToolLabel={null} /> : null}
+        {state.transcript.length > 0 ? <Transcript items={state.transcript} mode={mode} activeToolLabel={null} theme={theme} /> : null}
         {state.streaming ? (
           <StreamingIndicator
             spinner={spinnerFrames[spinnerFrame]}
             message={loadingMessage}
             shimmerFrame={shimmerFrame}
             nextTodo={latestTool?.summary ?? null}
+            theme={theme}
           />
         ) : null}
         {state.inputMode === 'approval' && state.approvalRequest ? (
-          <ApprovalPrompt request={state.approvalRequest} onApprove={handleApprove} onReject={handleReject} />
+          <ApprovalPrompt request={state.approvalRequest} onApprove={handleApprove} onReject={handleReject} theme={theme} />
         ) : (
           <InputBox
             value={state.pendingInput}
@@ -95,35 +98,58 @@ export function App({ store, runtime, approvalController, model, cwd }: AppProps
             onSubmit={(nextValue) => {
               void handleSubmit(nextValue);
             }}
+            theme={theme}
           />
         )}
-        <Footer model={model} tokenCount={0} />
+        <Footer model={model} tokenCount={0} theme={theme} />
       </Box>
     </Box>
   );
 }
 
 function StreamingIndicator(
-  { spinner, message, shimmerFrame, nextTodo }: { spinner: string; message: string; shimmerFrame: number; nextTodo: string | null },
+  {
+    spinner,
+    message,
+    shimmerFrame,
+    nextTodo,
+    theme,
+  }: {
+    spinner: string;
+    message: string;
+    shimmerFrame: number;
+    nextTodo: string | null;
+    theme: TuiThemePalette;
+  },
 ) {
   return (
     <Box flexDirection="column">
       <Box columnGap={1}>
-        <Text color={TUI_THEME.primary}>{spinner}</Text>
-        <ShimmerText text={message} frame={shimmerFrame} width={3} />
+        <Text color={theme.primary}>{spinner}</Text>
+        <ShimmerText text={message} frame={shimmerFrame} width={3} theme={theme} />
       </Box>
-      {nextTodo ? <Text color={TUI_THEME.textDim}>{`Next: ${nextTodo}`}</Text> : null}
+      {nextTodo ? <Text color={theme.textDim}>{`Next: ${nextTodo}`}</Text> : null}
     </Box>
   );
 }
 
-function ShimmerText({ text, frame, width }: { text: string; frame: number; width: number }) {
+function ShimmerText({
+  text,
+  frame,
+  width,
+  theme,
+}: {
+  text: string;
+  frame: number;
+  width: number;
+  theme: TuiThemePalette;
+}) {
   return (
     <Text>
       {text.split('').map((char, index) => {
         const inWindow = index >= frame && index < frame + width;
         return (
-          <Text key={`${char}-${index}`} color={inWindow ? TUI_THEME.highlightedText : TUI_THEME.textMuted} bold={inWindow}>
+          <Text key={`${char}-${index}`} color={inWindow ? theme.highlightedText : theme.textMuted} bold={inWindow}>
             {char}
           </Text>
         );

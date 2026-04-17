@@ -9,7 +9,8 @@ anthropic:
   model: MiniMax-M2.5
   max_tokens: 8192
 
-
+tui:
+  theme: light
 
 # Tool 沙箱配置
 tools:

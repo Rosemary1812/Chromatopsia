@@ -1,11 +1,12 @@
 import { Box } from 'ink';
-import type { TranscriptItem } from '../types.js';
+import type { TranscriptItem, TuiThemePalette } from '../types.js';
 import { TranscriptItemView } from './transcript-item.js';
 
 type TranscriptProps = {
   items: TranscriptItem[];
   mode: 'idle' | 'working' | 'approval';
   activeToolLabel?: string | null;
+  theme: TuiThemePalette;
 };
 
 function getTurnId(item: TranscriptItem): string | undefined {
@@ -19,7 +20,7 @@ function getTurnId(item: TranscriptItem): string | undefined {
   }
 }
 
-export function Transcript({ items }: TranscriptProps) {
+export function Transcript({ items, theme }: TranscriptProps) {
   const latestTurnId = [...items]
     .reverse()
     .map((item) => getTurnId(item))
@@ -43,7 +44,7 @@ export function Transcript({ items }: TranscriptProps) {
   return (
     <Box flexDirection="column">
       {visibleItems.map((item) => (
-        <TranscriptItemView key={item.id} item={item} />
+        <TranscriptItemView key={item.id} item={item} theme={theme} />
       ))}
     </Box>
   );
