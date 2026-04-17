@@ -208,6 +208,10 @@ interface WebSearchArgs {
   num_results?: number;
 }
 
+function isLikelySearchParsingFailure(response: SearchResponse): boolean {
+  return response.results.length === 0;
+}
+
 async function websearch_handler(
   args: Record<string, unknown>,
   _context: ToolContext,
@@ -227,6 +231,23 @@ async function websearch_handler(
 
   try {
     const response = await duckduckgo_search(query.trim(), resultsCount);
+    if (isLikelySearchParsingFailure(response)) {
+      const fallback = await bing_search(query.trim(), resultsCount);
+      if (fallback.results.length === 0) {
+        return {
+          tool_call_id: '',
+          output: JSON.stringify({
+            error: 'Search returned no results from either DuckDuckGo or Bing',
+          }),
+          success: false,
+        };
+      }
+      return {
+        tool_call_id: '',
+        output: JSON.stringify(fallback),
+        success: true,
+      };
+    }
 
     return {
       tool_call_id: '',
@@ -246,6 +267,15 @@ async function websearch_handler(
     ) {
       try {
         const fallback = await bing_search(query.trim(), resultsCount);
+        if (fallback.results.length === 0) {
+          return {
+            tool_call_id: '',
+            output: JSON.stringify({
+              error: 'Search returned no results from Bing after DuckDuckGo failed',
+            }),
+            success: false,
+          };
+        }
         return {
           tool_call_id: '',
           output: JSON.stringify(fallback),

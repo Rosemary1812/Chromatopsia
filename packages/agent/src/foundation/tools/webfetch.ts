@@ -18,6 +18,10 @@ interface FetchResult {
   language: string;
 }
 
+interface InvalidPageDetection {
+  reason: string;
+}
+
 // ============================================================
 // Helpers
 // ============================================================
@@ -69,6 +73,50 @@ function truncate_markdown(markdown: string): string {
   }
 
   return `${markdown.slice(0, MAX_MARKDOWN_CHARS)}\n\n[Truncated: content too long, showing first ${MAX_MARKDOWN_CHARS} characters]`;
+}
+
+function detect_invalid_page(title: string, markdown: string, url: string): InvalidPageDetection | null {
+  const combined = `${title}\n${markdown}\n${url}`.toLowerCase();
+
+  const parkedMarkers = [
+    'is for sale',
+    'domain for sale',
+    'buy this domain',
+    'brandbucket',
+    'sedo',
+    'hugedomains',
+    'afternic',
+    'parked free',
+  ];
+  if (parkedMarkers.some((marker) => combined.includes(marker))) {
+    return { reason: 'Fetched page appears to be a parked or for-sale domain page' };
+  }
+
+  const challengeMarkers = [
+    'captcha',
+    'verify you are human',
+    'access denied',
+    'enable javascript',
+    'cloudflare',
+    'security check',
+    'bot verification',
+  ];
+  if (challengeMarkers.some((marker) => combined.includes(marker))) {
+    return { reason: 'Fetched page appears to be a challenge, block, or bot-verification page' };
+  }
+
+  const authMarkers = [
+    'sign in',
+    'log in',
+    'login required',
+    'please log in',
+    'create account',
+  ];
+  if (authMarkers.some((marker) => combined.includes(marker))) {
+    return { reason: 'Fetched page appears to require authentication instead of exposing readable content' };
+  }
+
+  return null;
 }
 
 // ============================================================
@@ -186,6 +234,15 @@ async function webfetch_handler(
   }
 
   markdown = truncate_markdown(markdown);
+
+  const invalidPage = detect_invalid_page(title, markdown, url);
+  if (invalidPage) {
+    return {
+      tool_call_id: '',
+      output: JSON.stringify({ error: invalidPage.reason, title, url }),
+      success: false,
+    };
+  }
 
   const result: FetchResult = {
     title,

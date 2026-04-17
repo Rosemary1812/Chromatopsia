@@ -9,8 +9,8 @@ vi.mock('@anthropic-ai/sdk', () => {
 
   // Mock APIError class
   class MockAPIError extends Error {
-    status: number;
-    constructor(message: string, status: number) {
+    status?: number;
+    constructor(message: string, status?: number) {
       super(message);
       this.name = 'APIError';
       this.status = status;
@@ -210,6 +210,18 @@ describe('AnthropicProvider', () => {
 
       await expect(provider.chat(messages)).rejects.toThrow(
         'Anthropic API error (401): Invalid API key'
+      );
+    });
+
+    it('should throw connection error when APIError has no status', async () => {
+      const messages: Message[] = [{ role: 'user', content: 'Hello' }];
+
+      const MockAnthropic = (vi.mocked(anthropicModule) as any).default;
+      const apiError = new MockAnthropic.APIError('Connection error.');
+      __mockMessagesCreate.mockRejectedValueOnce(apiError);
+
+      await expect(provider.chat(messages)).rejects.toThrow(
+        'Anthropic connection error: Connection error.'
       );
     });
 

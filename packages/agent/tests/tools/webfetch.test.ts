@@ -204,6 +204,37 @@ describe('webfetch tool', () => {
       globalThis.fetch = original_fetch;
     });
 
+    it('should reject parked domain pages', async () => {
+      const html = `
+        <html>
+          <head><title>Example.com is For Sale</title></head>
+          <body>
+            <h1>EXAMPLE.COM</h1>
+            <p>A premium domain name exclusively for sale on the BrandBucket network.</p>
+          </body>
+        </html>
+      `;
+
+      const original_fetch = globalThis.fetch;
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        headers: new Map([['content-length', String(html.length)]]),
+        text: () => Promise.resolve(html),
+      } as unknown as Response);
+
+      const result = await webfetch_definition.handler(
+        { url: 'https://example.com/article' },
+        mockContext,
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.output).toContain('parked or for-sale domain page');
+
+      globalThis.fetch = original_fetch;
+    });
+
     // Timeout test is skipped because AbortController + fake fetch mock
     // interaction is complex. The timeout logic is straightforward:
     // it uses setTimeout + AbortController which works correctly in real usage.

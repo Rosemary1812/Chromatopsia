@@ -20,6 +20,13 @@ const DEFAULT_MODEL = 'claude-opus-4-6';
 const DEFAULT_MAX_TOKENS = 8192;
 const MAX_RETRIES = 3;
 
+function formatAnthropicError(error: { message: string; status?: number }): Error {
+  if (typeof error.status === 'number') {
+    return new Error(`Anthropic API error (${error.status}): ${error.message}`);
+  }
+  return new Error(`Anthropic connection error: ${error.message}`);
+}
+
 export class AnthropicProvider implements LLMProvider {
   name = 'anthropic';
   private client: Anthropic | null = null;
@@ -194,9 +201,7 @@ export class AnthropicProvider implements LLMProvider {
       };
     } catch (error) {
       if (error instanceof Anthropic.APIError) {
-        throw new Error(
-          `Anthropic API error (${error.status}): ${error.message}`
-        );
+        throw formatAnthropicError(error);
       }
       throw error;
     }
@@ -327,9 +332,7 @@ export class AnthropicProvider implements LLMProvider {
       };
     } catch (error) {
       if (error instanceof Anthropic.APIError) {
-        throw new Error(
-          `Anthropic API error (${error.status}): ${error.message}`
-        );
+        throw formatAnthropicError(error);
       }
       throw error;
     }

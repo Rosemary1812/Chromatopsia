@@ -1,5 +1,5 @@
 // T-12: WebSearch Tool tests
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { websearch_definition } from '../../src/foundation/tools/websearch.js';
 import type { ToolContext } from '../../src/foundation/types.js';
 
@@ -8,6 +8,10 @@ describe('websearch tool', () => {
     session: {} as any,
     working_directory: '/project',
   };
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
 
   describe('websearch_definition', () => {
     it('should have correct tool name', () => {
@@ -59,7 +63,55 @@ describe('websearch tool', () => {
       expect(result.success).toBe(false);
     });
 
-    // Note: Actual search functionality requires network access.
-    // Validation-only tests are sufficient for unit test coverage.
+    it('falls back to Bing when DuckDuckGo returns zero parsed results', async () => {
+      const fetchMock = vi.spyOn(globalThis, 'fetch');
+      fetchMock
+        .mockResolvedValueOnce({
+          ok: true,
+          text: async () => '<html><body><div>No parseable ddg results</div></body></html>',
+        } as Response)
+        .mockResolvedValueOnce({
+          ok: true,
+          text: async () => `
+            <html><body>
+              <li class="b_algo">
+                <h2><a href="https://example.com/ai-infra">AI Infrastructure Guide</a></h2>
+                <p class="b_lineclamp">Overview of AI infrastructure components.</p>
+              </li>
+            </body></html>
+          `,
+        } as Response);
+
+      const result = await websearch_definition.handler(
+        { query: 'AI infrastructure', num_results: 5 },
+        mockContext,
+      );
+
+      expect(result.success).toBe(true);
+      const parsed = JSON.parse(result.output);
+      expect(parsed.results).toHaveLength(1);
+      expect(parsed.results[0].source).toBe('bing');
+    });
+
+    it('fails when both DuckDuckGo and Bing return zero results', async () => {
+      const fetchMock = vi.spyOn(globalThis, 'fetch');
+      fetchMock
+        .mockResolvedValueOnce({
+          ok: true,
+          text: async () => '<html><body><div>No parseable ddg results</div></body></html>',
+        } as Response)
+        .mockResolvedValueOnce({
+          ok: true,
+          text: async () => '<html><body><div>No parseable bing results</div></body></html>',
+        } as Response);
+
+      const result = await websearch_definition.handler(
+        { query: 'AI infrastructure', num_results: 5 },
+        mockContext,
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.output).toContain('no results');
+    });
   });
 });
