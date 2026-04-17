@@ -166,6 +166,6 @@ export const run_shell_definition: ToolDefinition = {
     },
     required: ['command'],
   },
-  danger_level: 'dangerous',
+  danger_level: 'warning',
   handler: run_shell_handler,
 };

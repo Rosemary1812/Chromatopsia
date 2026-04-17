@@ -9,6 +9,49 @@ import { is_dangerous_command, is_sensitive_path } from '../foundation/tools/den
 // ============================================================
 
 const DEFAULT_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+const SAFE_RUN_SHELL_PATTERNS: RegExp[] = [
+  /^\s*pwd\s*$/i,
+  /^\s*ls(?:\s|$)/i,
+  /^\s*dir(?:\s|$)/i,
+  /^\s*echo(?:\s|$)/i,
+  /^\s*git\s+status(?:\s|$)/i,
+  /^\s*git\s+log(?:\s|$)/i,
+  /^\s*git\s+diff(?:\s|$)/i,
+  /^\s*git\s+show(?:\s|$)/i,
+  /^\s*git\s+branch(?:\s|$)/i,
+  /^\s*rg(?:\s|$)/i,
+  /^\s*grep(?:\s|$)/i,
+  /^\s*cat(?:\s|$)/i,
+  /^\s*sed(?:\s|$)/i,
+  /^\s*head(?:\s|$)/i,
+  /^\s*tail(?:\s|$)/i,
+  /^\s*wc(?:\s|$)/i,
+  /^\s*find(?:\s|$)/i,
+  /^\s*which(?:\s|$)/i,
+  /^\s*where(?:\s|$)/i,
+  /^\s*type(?:\s|$)/i,
+  /^\s*tree(?:\s|$)/i,
+];
+const APPROVAL_RUN_SHELL_PATTERNS: RegExp[] = [
+  /^\s*git\s+(?:push|commit|merge|rebase|cherry-pick|switch|checkout|reset|tag|fetch|pull)(?:\s|$)/i,
+  /^\s*(?:npm|pnpm|yarn|bun)\s+(?:install|add|remove|update|upgrade|unlink|link|publish|login|logout|run|exec|dlx)(?:\s|$)/i,
+  /^\s*(?:node|nodejs|python|python3|bash|sh|zsh|cmd|powershell|pwsh)(?:\s|$)/i,
+  /^\s*(?:curl|wget)(?:\s|$)/i,
+  /^\s*chmod(?:\s|$)/i,
+  /^\s*chown(?:\s|$)/i,
+  /^\s*mv(?:\s|$)/i,
+  /^\s*cp(?:\s|$)/i,
+  /^\s*mkdir(?:\s|$)/i,
+  /^\s*touch(?:\s|$)/i,
+  /^\s*tee(?:\s|$)/i,
+  /^\s*docker(?:\s|$)/i,
+];
+const SHELL_CONTROL_OPERATOR_PATTERN = /[|;&><`]/;
+
+export interface ApprovalHookOptions {
+  auto_approve_safe?: boolean;
+  timeout_ms?: number;
+}
 
 export class ApprovalHook {
   private pendingRequests = new Map<string, {
@@ -16,6 +59,13 @@ export class ApprovalHook {
     reject: (error: Error) => void;
     timeoutId: ReturnType<typeof setTimeout>;
   }>();
+  private readonly autoApproveSafe: boolean;
+  private readonly defaultTimeoutMs: number;
+
+  constructor(options: ApprovalHookOptions = {}) {
+    this.autoApproveSafe = options.auto_approve_safe ?? true;
+    this.defaultTimeoutMs = options.timeout_ms ?? DEFAULT_TIMEOUT_MS;
+  }
 
   /**
    * Request approval for a tool execution.
@@ -37,15 +87,16 @@ export class ApprovalHook {
       return this.createRequest(tool_name, args, context);
     }
 
+    if (tool_name === 'run_shell') {
+      const command = typeof args['command'] === 'string' ? args['command'] : '';
+      if (this.shouldApproveRunShell(command)) {
+        return this.createRequest(tool_name, args, context);
+      }
+      return this.autoApproveSafe ? null : this.createRequest(tool_name, args, context);
+    }
+
     // Dangerous tools always require approval
     if (toolDef.danger_level === 'dangerous') {
-      // Check for dangerous command patterns in arguments
-      if (tool_name === 'run_shell') {
-        const command = args['command'] as string;
-        if (command && is_dangerous_command(command)) {
-          return this.createRequest(tool_name, args, context);
-        }
-      }
       return this.createRequest(tool_name, args, context);
     }
 
@@ -57,7 +108,28 @@ export class ApprovalHook {
     }
 
     // Safe tools are auto-approved
-    return null;
+    return this.autoApproveSafe ? null : this.createRequest(tool_name, args, context);
+  }
+
+  private shouldApproveRunShell(command: string): boolean {
+    const normalized = command.trim();
+    if (!normalized) {
+      return true;
+    }
+
+    if (is_dangerous_command(normalized)) {
+      return true;
+    }
+
+    if (APPROVAL_RUN_SHELL_PATTERNS.some((pattern) => pattern.test(normalized))) {
+      return true;
+    }
+
+    if (SHELL_CONTROL_OPERATOR_PATTERN.test(normalized)) {
+      return true;
+    }
+
+    return !SAFE_RUN_SHELL_PATTERNS.some((pattern) => pattern.test(normalized));
   }
 
   /**
@@ -87,10 +159,7 @@ export class ApprovalHook {
 
       case 'run_shell': {
         const command = args['command'] as string;
-        if (command && is_dangerous_command(command)) {
-          return true;
-        }
-        return false;
+        return this.shouldApproveRunShell(command || '');
       }
 
       default:
@@ -125,12 +194,12 @@ export class ApprovalHook {
    */
   async wait_for_decision(
     request_id: string,
-    timeout_ms: number = DEFAULT_TIMEOUT_MS
+    timeout_ms: number = this.defaultTimeoutMs
   ): Promise<ApprovalResponse> {
     return new Promise<ApprovalResponse>((resolve, reject) => {
       const timeoutId = setTimeout(() => {
         this.pendingRequests.delete(request_id);
-        // Timeout → auto reject
+        // Timeout -> auto reject
         resolve({
           request_id,
           decision: 'reject',

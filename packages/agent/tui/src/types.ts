@@ -117,7 +117,6 @@ export interface TuiStoreOptions extends TuiCommandContext {
 
 export type RuntimeEventHandler = (event: RuntimeEvent) => void;
 
-// 先把主题常量收敛在类型文件里，方便当前这版 TUI 组件直接复用同一套色阶。
 export const TUI_THEME = {
   primary: "#b01e1e",
   highlightedText: "#c6e7ff",
@@ -130,9 +129,15 @@ export const TUI_THEME = {
   success: "#7dd3a7",
   warning: "#f6c177",
   danger: "#ef8891",
+  syntaxKeyword: "#ff9e64",
+  syntaxString: "#9ece6a",
+  syntaxNumber: "#e0af68",
+  syntaxTitle: "#7aa2f7",
+  syntaxLiteral: "#bb9af7",
+  syntaxComment: "#6b7280",
 } as const;
 
-export const BRAND_LOGO = [" ▐▛███▜▌", " ███████", " ▋ ▋ ▋ ▐"] as const;
+export const BRAND_LOGO = [" ▐▛███▜▌", " ███████", " ▋ ▋ ▐ ▐"] as const;
 
 export function getModeLabel(mode: "idle" | "working" | "approval"): string {
   switch (mode) {
@@ -157,7 +162,6 @@ export function getModeColor(mode: "idle" | "working" | "approval"): string {
 }
 
 export function truncateMiddle(value: string, maxLength = 56): string {
-  // 目录通常很长，Header 里保留首尾信息比简单截断更有辨识度。
   if (value.length <= maxLength) return value;
   const segment = Math.max(8, Math.floor((maxLength - 1) / 2));
   return `${value.slice(0, segment)}…${value.slice(-segment)}`;

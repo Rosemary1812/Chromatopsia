@@ -143,6 +143,32 @@ describe('repl/runtime', () => {
     }));
   });
 
+  it('passes approval config into ApprovalHook', async () => {
+    const session = create_mock_session();
+    const provider = create_mock_provider();
+    setup_common_mocks(session, provider);
+
+    await create_agent_runtime({
+      working_dir: '/tmp',
+      provider: 'anthropic',
+      config: { api_key: 'test' },
+      app_config: {
+        provider: 'anthropic',
+        anthropic: { api_key: 'test' },
+        approval: {
+          auto_approve_safe: false,
+          timeout_seconds: 42,
+        },
+      },
+      runtime: { emit: vi.fn() },
+    });
+
+    expect(hooksApprovalModule.ApprovalHook).toHaveBeenCalledWith({
+      auto_approve_safe: false,
+      timeout_ms: 42000,
+    });
+  });
+
   it('maps runtime events back to AgentEvents callbacks', async () => {
     const onTurnComplete = vi.fn();
     const onStreamChunk = vi.fn();

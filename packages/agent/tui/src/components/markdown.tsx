@@ -1,4 +1,5 @@
 import { Box, Text } from 'ink';
+import hljs from 'highlight.js';
 import { marked } from 'marked';
 import { TUI_THEME } from '../types.js';
 
@@ -12,6 +13,11 @@ type MarkdownSpan =
   | { kind: 'emphasis'; text: string }
   | { kind: 'code'; text: string }
   | { kind: 'link'; text: string; href?: string };
+
+type CodeSegment = {
+  text: string;
+  color?: string;
+};
 
 type MarkdownBlock =
   | { kind: 'heading'; depth: number; spans: MarkdownSpan[] }
@@ -33,9 +39,16 @@ type TokenLike = {
   items?: TokenLike[];
 };
 
+const HLJS_CLASS_COLOR_MAP: Array<[pattern: RegExp, color: string]> = [
+  [/hljs-(keyword|operator|selector-tag|selector-pseudo|template-tag|name)/, TUI_THEME.syntaxKeyword],
+  [/hljs-(string|regexp|char|subst)/, TUI_THEME.syntaxString],
+  [/hljs-(number|symbol|bullet)/, TUI_THEME.syntaxNumber],
+  [/hljs-(title|section|attr|attribute|property|variable|params)/, TUI_THEME.syntaxTitle],
+  [/hljs-(literal|built_in|type)/, TUI_THEME.syntaxLiteral],
+  [/hljs-(comment|quote)/, TUI_THEME.syntaxComment],
+];
+
 export function parseMarkdown(text: string): MarkdownBlock[] {
-  // 先把 Markdown 解析成稳定的中间结构，再做 Ink 渲染。
-  // 这样测试可以直接验证解析结果，不必依赖终端渲染细节。
   const normalized = text.replace(/\r\n/g, '\n');
   const tokens = marked.lexer(normalized, {
     gfm: true,
@@ -46,7 +59,6 @@ export function parseMarkdown(text: string): MarkdownBlock[] {
 }
 
 function mapBlockToken(token: TokenLike): MarkdownBlock[] {
-  // 这里只保留当前 TUI 真正需要的 block 类型，避免复杂 Markdown 破坏布局。
   switch (token.type) {
     case 'heading':
       return [{ kind: 'heading', depth: token.depth ?? 1, spans: inlineTokensToSpans(token.tokens, token.text) }];
@@ -58,7 +70,7 @@ function mapBlockToken(token: TokenLike): MarkdownBlock[] {
         kind: 'list',
         ordered: Boolean(token.ordered),
         items: (token.items ?? []).map((item, index) => ({
-          marker: token.ordered ? `${(token.start ?? 1) + index}.` : '•',
+          marker: token.ordered ? `${(token.start ?? 1) + index}.` : '\u2022',
           spans: item.tokens ? inlineTokensToSpans(flattenInlineTokens(item.tokens)) : inlineTokensToSpans(undefined, item.text),
         })),
       }];
@@ -90,7 +102,7 @@ function blockToQuoteLines(block: MarkdownBlock): MarkdownSpan[][] {
     case 'code':
       return block.lines.map((line) => [{ kind: 'code', text: line }]);
     case 'rule':
-      return [[{ kind: 'text', text: '────────' }]];
+      return [[{ kind: 'text', text: '\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500' }]];
     default:
       return [];
   }
@@ -110,7 +122,6 @@ function inlineTokensToSpans(tokens?: TokenLike[], fallbackText?: string): Markd
     return fallbackText ? [{ kind: 'text', text: fallbackText }] : [];
   }
 
-  // inline 层只抽 strong / emphasis / code / link，其他复杂语义退回纯文本。
   return tokens.flatMap((token) => {
     switch (token.type) {
       case 'text':
@@ -149,6 +160,67 @@ function extractInlineText(tokens?: TokenLike[], fallbackText?: string): string 
   }).join('');
 }
 
+function decodeHtmlEntities(text: string): string {
+  return text
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'");
+}
+
+function colorForHighlightClasses(classes: string[]): string | undefined {
+  const joined = classes.join(' ');
+  for (const [pattern, color] of HLJS_CLASS_COLOR_MAP) {
+    if (pattern.test(joined)) return color;
+  }
+  return undefined;
+}
+
+function tokenizeHighlightedHtml(value: string): CodeSegment[] {
+  const segments: CodeSegment[] = [];
+  const stack: string[] = [];
+  const tagPattern = /<span class="([^"]*)">|<\/span>/g;
+  let lastIndex = 0;
+
+  for (const match of value.matchAll(tagPattern)) {
+    const index = match.index ?? 0;
+    if (index > lastIndex) {
+      const text = decodeHtmlEntities(value.slice(lastIndex, index));
+      if (text) segments.push({ text, color: colorForHighlightClasses(stack) });
+    }
+
+    if (match[0] === '</span>') {
+      stack.pop();
+    } else {
+      stack.push(match[1] ?? '');
+    }
+
+    lastIndex = index + match[0].length;
+  }
+
+  if (lastIndex < value.length) {
+    const text = decodeHtmlEntities(value.slice(lastIndex));
+    if (text) segments.push({ text, color: colorForHighlightClasses(stack) });
+  }
+
+  return segments;
+}
+
+export function highlightCodeLine(line: string, lang?: string): CodeSegment[] {
+  if (!line) return [{ text: ' ' }];
+
+  try {
+    const result = lang && hljs.getLanguage(lang)
+      ? hljs.highlight(line, { language: lang, ignoreIllegals: true })
+      : hljs.highlightAuto(line);
+    const segments = tokenizeHighlightedHtml(result.value);
+    return segments.length > 0 ? segments : [{ text: line }];
+  } catch {
+    return [{ text: line }];
+  }
+}
+
 function renderSpans(spans: MarkdownSpan[]) {
   return spans.map((span, index) => {
     switch (span.kind) {
@@ -184,7 +256,6 @@ function renderSpans(spans: MarkdownSpan[]) {
 }
 
 function renderBlock(block: MarkdownBlock, index: number) {
-  // Ink 负责终端中的视觉层级：标题、列表、引用、代码块各自有独立的排版。
   switch (block.kind) {
     case 'heading':
       return (
@@ -214,7 +285,7 @@ function renderBlock(block: MarkdownBlock, index: number) {
         <Box key={index} flexDirection="column" marginLeft={1}>
           {block.lines.map((line, lineIndex) => (
             <Box key={`${index}-${lineIndex}`}>
-              <Text color={TUI_THEME.textDim}>{'│ '}</Text>
+              <Text color={TUI_THEME.textDim}>{'\u2502 '}</Text>
               <Text color={TUI_THEME.textMuted}>{renderSpans(line)}</Text>
             </Box>
           ))}
@@ -223,10 +294,14 @@ function renderBlock(block: MarkdownBlock, index: number) {
     case 'code':
       return (
         <Box key={index} flexDirection="column" marginLeft={1}>
-          <Text color={TUI_THEME.textDim}>{`┌─ ${block.lang || 'text'}`}</Text>
+          <Text color={TUI_THEME.textDim}>{`[${block.lang || 'text'}]`}</Text>
           {block.lines.map((line, lineIndex) => (
             <Text key={`${index}-${lineIndex}`} color={TUI_THEME.textPrimary}>
-              {line || ' '}
+              {highlightCodeLine(line, block.lang).map((segment, segmentIndex) => (
+                <Text key={`${index}-${lineIndex}-${segmentIndex}`} color={segment.color ?? TUI_THEME.textPrimary}>
+                  {segment.text}
+                </Text>
+              ))}
             </Text>
           ))}
         </Box>
@@ -234,7 +309,7 @@ function renderBlock(block: MarkdownBlock, index: number) {
     case 'rule':
       return (
         <Text key={index} color={TUI_THEME.textDim}>
-          {'────────────────'}
+          {'\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500'}
         </Text>
       );
   }

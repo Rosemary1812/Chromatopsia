@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { ApprovalRequest, RuntimeEvent, ToolCall, ToolResult } from '../../src/foundation/types.js';
 import { executeBuiltinCommand, formatBuiltinCommandHelp, matchBuiltinCommand } from '../../tui/src/commands.js';
-import { parseMarkdown } from '../../tui/src/components/markdown.js';
+import { highlightCodeLine, parseMarkdown } from '../../tui/src/components/markdown.js';
 import { TuiStore } from '../../tui/src/store.js';
 
 function createToolCall(overrides: Partial<ToolCall> = {}): ToolCall {
@@ -247,5 +247,13 @@ describe('TuiStore', () => {
       { kind: 'code', text: 'code' },
       { kind: 'text', text: ' text.' },
     ]);
+  });
+
+  it('tokenizes fenced code lines with syntax colors', () => {
+    const segments = highlightCodeLine("const greeting = 'Hello World!';", 'js');
+
+    expect(segments.map((segment) => segment.text).join('')).toBe("const greeting = 'Hello World!';");
+    expect(segments.some((segment) => segment.text === 'const' && typeof segment.color === 'string')).toBe(true);
+    expect(segments.some((segment) => segment.text.includes("'Hello World!'") && typeof segment.color === 'string')).toBe(true);
   });
 });

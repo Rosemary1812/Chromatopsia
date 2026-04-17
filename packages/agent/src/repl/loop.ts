@@ -193,7 +193,10 @@ export async function create_agent_runtime(options: AgentRuntimeOptions): Promis
     enableBuiltin: true,
     cwd: storagePaths.projectRoot,
   });
-  const approval_hook = new ApprovalHook();
+  const approval_hook = new ApprovalHook({
+    auto_approve_safe: loadedAppConfig?.approval?.auto_approve_safe ?? true,
+    timeout_ms: (loadedAppConfig?.approval?.timeout_seconds ?? 300) * 1000,
+  });
   const memoryIndexStore = new MemoryIndexStore(storagePaths.memoryDir);
   const memoryTopicStore = new MemoryTopicStore(storagePaths.memoryDir);
   const turnEventStore = new TurnEventStore({ baseDir: storagePaths.learningDir });

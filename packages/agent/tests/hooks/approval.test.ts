@@ -1,10 +1,9 @@
 // T-20: hooks/approval.ts ApprovalHook tests
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ApprovalHook } from '../../src/hooks/approval.js';
-import { ToolRegistry, registry } from '../../src/foundation/tools/registry.js';
+import { registry } from '../../src/foundation/tools/registry.js';
 import type { ToolDefinition } from '../../src/foundation/types.js';
 
-// Helper to register a tool with a specific danger level
 function registerTool(name: string, dangerLevel: 'safe' | 'warning' | 'dangerous'): void {
   const def: ToolDefinition = {
     name,
@@ -16,7 +15,6 @@ function registerTool(name: string, dangerLevel: 'safe' | 'warning' | 'dangerous
   registry.register(def);
 }
 
-// Register standard tools before tests
 function registerStandardTools(): void {
   registerTool('Read', 'safe');
   registerTool('Edit', 'warning');
@@ -24,17 +22,13 @@ function registerStandardTools(): void {
   registerTool('Glob', 'safe');
   registerTool('WebSearch', 'safe');
   registerTool('WebFetch', 'safe');
-  registerTool('run_shell', 'dangerous');
+  registerTool('run_shell', 'warning');
 }
 
 describe('ApprovalHook', () => {
   let approvalHook: ApprovalHook;
 
   beforeEach(() => {
-    // Fresh registry for each test
-    registry.get_all().forEach((t) => {
-      // Can't unregister from singleton, but we can check before re-registering
-    });
     registerStandardTools();
     approvalHook = new ApprovalHook();
     vi.useFakeTimers();
@@ -46,24 +40,48 @@ describe('ApprovalHook', () => {
 
   describe('request_approval', () => {
     it('should return null for safe tools', () => {
-      // Read is a safe tool
       const result = approvalHook.request_approval('Read', { file_path: '/tmp/a.txt' }, '');
       expect(result).toBeNull();
     });
 
-    it('should return ApprovalRequest for dangerous tools', () => {
-      // run_shell is a dangerous tool
-      const result = approvalHook.request_approval(
-        'run_shell',
-        { command: 'echo hello' },
-        'test context'
-      );
-      expect(result).not.toBeNull();
-      expect(result?.tool_name).toBe('run_shell');
-      expect(result?.args).toEqual({ command: 'echo hello' });
-      expect(result?.context).toBe('test context');
-      expect(result?.id).toBeDefined();
-      expect(result?.timestamp).toBeDefined();
+    it('should auto-approve safe run_shell commands', () => {
+      const safeCommands = [
+        'ls',
+        'pwd',
+        'echo hello',
+        'git status',
+        'git log --oneline -5',
+        'rg approval packages/agent/src',
+      ];
+
+      for (const cmd of safeCommands) {
+        const result = approvalHook.request_approval(
+          'run_shell',
+          { command: cmd },
+          'safe command'
+        );
+        expect(result).toBeNull();
+      }
+    });
+
+    it('should require approval for mutating or ambiguous run_shell commands', () => {
+      const guardedCommands = [
+        'npm install',
+        'git push',
+        'python3 scripts/migrate.py',
+        'mkdir build',
+        'ls && pwd',
+      ];
+
+      for (const cmd of guardedCommands) {
+        const result = approvalHook.request_approval(
+          'run_shell',
+          { command: cmd },
+          'guarded command'
+        );
+        expect(result).not.toBeNull();
+        expect(result?.tool_name).toBe('run_shell');
+      }
     });
 
     it('should return ApprovalRequest for dangerous command patterns', () => {
@@ -90,25 +108,10 @@ describe('ApprovalHook', () => {
       }
     });
 
-    it('should return null for non-dangerous shell commands', () => {
-      const safeCommands = [
-        'ls',
-        'pwd',
-        'echo hello',
-        'git status',
-        'git log --oneline -5',
-      ];
-
-      for (const cmd of safeCommands) {
-        const result = approvalHook.request_approval(
-          'run_shell',
-          { command: cmd },
-          'safe command'
-        );
-        // run_shell is dangerous, so even safe commands need approval
-        // (the actual dangerous pattern check happens at execution time)
-        expect(result).not.toBeNull();
-      }
+    it('should respect auto_approve_safe=false', () => {
+      const strictHook = new ApprovalHook({ auto_approve_safe: false });
+      const result = strictHook.request_approval('Read', { file_path: '/tmp/a.txt' }, '');
+      expect(result).not.toBeNull();
     });
 
     it('should return ApprovalRequest for Edit on sensitive paths', () => {
@@ -139,10 +142,8 @@ describe('ApprovalHook', () => {
         { file_path: '/tmp/test.txt', old_string: oldString, new_string: newString },
         'large edit'
       );
-      // 2 + 3 = 5 lines total, should still be under threshold
       expect(result).toBeNull();
 
-      // Add one more line to exceed threshold
       const largeOldString = 'line1\nline2\nline3';
       const largeNewString = 'new1\nnew2\nnew3';
 
@@ -175,8 +176,6 @@ describe('ApprovalHook', () => {
       const request_id = 'test-request-id';
 
       const decisionPromise = approvalHook.wait_for_decision(request_id, 5000);
-
-      // Fast-forward time by 5 seconds
       vi.advanceTimersByTime(5000);
 
       const response = await decisionPromise;
@@ -184,24 +183,20 @@ describe('ApprovalHook', () => {
       expect(response.request_id).toBe(request_id);
     });
 
-    it('should use default timeout of 5 minutes', async () => {
+    it('should use configured default timeout', async () => {
       const request_id = 'test-request-id';
+      const shortTimeoutHook = new ApprovalHook({ timeout_ms: 1000 });
 
-      const decisionPromise = approvalHook.wait_for_decision(request_id);
-
-      // Fast-forward by 4 minutes - should not resolve
-      vi.advanceTimersByTime(4 * 60 * 1000);
+      const decisionPromise = shortTimeoutHook.wait_for_decision(request_id);
+      vi.advanceTimersByTime(999);
 
       let resolved = false;
       decisionPromise.then(() => {
         resolved = true;
       });
-
-      // At 4 minutes, should not be resolved yet
       expect(resolved).toBe(false);
 
-      // Fast-forward to 5 minutes
-      vi.advanceTimersByTime(60 * 1000);
+      vi.advanceTimersByTime(1);
 
       const response = await decisionPromise;
       expect(response.decision).toBe('reject');
@@ -211,8 +206,6 @@ describe('ApprovalHook', () => {
       const request_id = 'test-request-id';
 
       const decisionPromise = approvalHook.wait_for_decision(request_id, 60000);
-
-      // Submit a decision before timeout
       approvalHook.submit_decision({
         request_id,
         decision: 'approve',
@@ -227,7 +220,6 @@ describe('ApprovalHook', () => {
       const request_id = 'test-request-id';
 
       const decisionPromise = approvalHook.wait_for_decision(request_id, 60000);
-
       approvalHook.submit_decision({
         request_id,
         decision: 'edit',
@@ -245,7 +237,6 @@ describe('ApprovalHook', () => {
       const request_id = 'test-request-id';
 
       const decisionPromise = approvalHook.wait_for_decision(request_id, 60000);
-
       approvalHook.submit_decision({
         request_id,
         decision: 'approve',
@@ -259,14 +250,11 @@ describe('ApprovalHook', () => {
       const request_id = 'test-request-id';
 
       const decisionPromise = approvalHook.wait_for_decision(request_id, 60000);
-
-      // Submit before any time passes
       approvalHook.submit_decision({
         request_id,
         decision: 'approve',
       });
 
-      // Advance time - should not trigger timeout
       vi.advanceTimersByTime(60000);
 
       const response = await decisionPromise;

@@ -55,7 +55,7 @@ function registerStandardTools(): void {
     name: 'run_shell',
     description: 'Run shell command',
     input_schema: { type: 'object' },
-    danger_level: 'dangerous',
+    danger_level: 'warning',
     handler: async ({ command }) => ({
       tool_call_id: '1',
       output: `executed: ${command}`,
