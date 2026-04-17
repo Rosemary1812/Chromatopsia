@@ -146,6 +146,22 @@ describe('SessionManager', () => {
       expect(s.last_compact_metadata).toBeDefined();
       expect(s.last_compact_metadata!.type).toBe('truncate');
     });
+
+    it('persists compacted history so recovered session matches memory', async () => {
+      const s = manager.create_session('/tmp/project-compact-persist');
+      for (let i = 0; i < 30; i++) {
+        s.add_message({ role: 'user', content: `message ${i}`.padEnd(200, ' ') });
+      }
+
+      await s.compact();
+
+      const recoveredManager = new SessionManager(dir, createMockProvider());
+      const recovered = await recoveredManager.recover_or_prompt('/tmp/project-compact-persist');
+      expect(recovered.recovered).toBe(true);
+      if ('session' in recovered) {
+        expect(recovered.session.messages).toEqual(s.messages);
+      }
+    });
   });
 
   describe('clear()', () => {
@@ -174,6 +190,20 @@ describe('SessionManager', () => {
       const before = s.last_active;
       s.clear();
       expect(s.last_active).toBeGreaterThanOrEqual(before);
+    });
+
+    it('persists cleared history so recovered session stays empty', async () => {
+      const s = manager.create_session('/tmp/project-clear-persist');
+      s.add_message({ role: 'user', content: 'hello' });
+      s.add_message({ role: 'assistant', content: 'hi' });
+      s.clear();
+
+      const recoveredManager = new SessionManager(dir, createMockProvider());
+      const recovered = await recoveredManager.recover_or_prompt('/tmp/project-clear-persist');
+      expect(recovered.recovered).toBe(true);
+      if ('session' in recovered) {
+        expect(recovered.session.messages).toEqual([]);
+      }
     });
   });
 

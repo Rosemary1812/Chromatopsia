@@ -71,6 +71,7 @@ describe('ApprovalHook', () => {
         'python3 scripts/migrate.py',
         'mkdir build',
         'ls && pwd',
+        'git status $(touch /tmp/pwned)',
       ];
 
       for (const cmd of guardedCommands) {

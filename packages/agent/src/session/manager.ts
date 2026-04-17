@@ -65,6 +65,7 @@ class SessionImpl implements Session {
   clear(): void {
     this.messages = [];
     this.last_active = Date.now();
+    this.manager.replace_messages(this.id, this.messages);
   }
 
   compact(): Promise<void> {
@@ -139,6 +140,12 @@ export class SessionManager {
     this.history.append_message_sync(session_id, message);
   }
 
+  replace_messages(session_id: string, messages: Message[]): void {
+    const session = this.sessions.get(session_id);
+    if (!session) return;
+    this.history.rewrite_session_sync(session_id, messages);
+  }
+
   /**
    * 压缩 session 消息历史
    * 异步方法，调用 compress_session 走 LLM 摘要决策树：
@@ -158,6 +165,7 @@ export class SessionManager {
 
     session.messages = result.compressed;
     session.last_compact_metadata = result.metadata;
+    this.history.rewrite_session_sync(session_id, session.messages);
   }
 
   /**

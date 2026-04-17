@@ -140,9 +140,9 @@ export function build_llm_context(
     }
   }
 
-  // 3. Conversation history (user + assistant + tool messages)
+  // 3. Conversation history, including persisted summaries stored as system messages
   for (const msg of session.messages) {
-    if (msg.role === 'user' || msg.role === 'assistant' || msg.role === 'tool') {
+    if (msg.role === 'user' || msg.role === 'assistant' || msg.role === 'tool' || msg.role === 'system') {
       messages.push({
         role: msg.role,
         content: msg.content,

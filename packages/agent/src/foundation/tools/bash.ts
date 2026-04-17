@@ -3,6 +3,8 @@ import { spawn } from 'child_process';
 import type { ToolDefinition, ToolResult, ToolContext } from '../types.js';
 import { is_dangerous_command } from './denied-patterns.js';
 
+const SHELL_EXPANSION_PATTERN = /\$\(|\${|\$[A-Za-z_]/;
+
 // ============================================================
 // Sandbox
 // ============================================================
@@ -14,6 +16,10 @@ import { is_dangerous_command } from './denied-patterns.js';
  * - Replaces ~ with cwd
  */
 export function sandbox_bash_command(cmd: string, cwd: string): string {
+  if (SHELL_EXPANSION_PATTERN.test(cmd)) {
+    throw new Error('Command contains unsupported shell expansion');
+  }
+
   const lines = cmd.split('\n');
   const sanitized = lines
     .map((line) => {

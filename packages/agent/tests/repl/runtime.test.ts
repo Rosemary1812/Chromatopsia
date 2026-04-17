@@ -256,6 +256,42 @@ describe('repl/runtime', () => {
     expect(events.every((event) => event.agentId === 'main')).toBe(true);
   });
 
+  it('rebuilds LLM context after compaction before streaming', async () => {
+    const summaryMessage: Message = { role: 'system', content: '【历史摘要】压缩后的摘要' };
+    const oldMessages = Array.from({ length: 23 }, (_, index) => ({
+      role: index % 2 === 0 ? 'user' as const : 'assistant' as const,
+      content: `message-${index}`,
+    }));
+    const session = create_mock_session();
+    session.messages.push(...oldMessages);
+    session.compact = vi.fn(async () => {
+      session.messages.splice(0, session.messages.length, summaryMessage, { role: 'user', content: 'latest question' });
+    });
+
+    const provider = create_mock_provider();
+    mock_llm_responses = [{ content: 'Hello!', finish_reason: 'stop' }];
+    setup_common_mocks(session, provider);
+
+    const agentRuntime = await create_agent_runtime({
+      working_dir: '/tmp',
+      provider: 'anthropic',
+      config: { api_key: 'test' },
+      runtime: { emit: vi.fn() },
+    });
+
+    await agentRuntime.handle_user_input('latest question');
+
+    expect(session.compact).toHaveBeenCalled();
+    expect(provider.chat_stream).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        expect.objectContaining({ role: 'system', content: expect.stringContaining('【历史摘要】压缩后的摘要') }),
+      ]),
+      expect.anything(),
+    );
+    const streamedMessages = (provider.chat_stream as unknown as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] ?? [];
+    expect(streamedMessages.some((message) => message.content === 'message-0')).toBe(false);
+  });
+
   it('exposes dynamic skill slash commands and load summary', async () => {
     const session = create_mock_session();
     const provider = create_mock_provider();

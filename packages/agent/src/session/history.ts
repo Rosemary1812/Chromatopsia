@@ -145,6 +145,25 @@ export class SessionHistory {
     await writeFile(path, line, { encoding: 'utf-8', flag: 'a' });
   }
 
+  rewrite_session_sync(session_id: string, messages: Message[]): void {
+    this.ensure_dir();
+    const path = this.session_path(session_id);
+    const index = this.read_index_sync();
+    const entry_idx = index.sessions.findIndex((e) => e.session_id === session_id);
+
+    if (entry_idx !== -1) {
+      index.sessions[entry_idx] = {
+        ...index.sessions[entry_idx],
+        last_active: Date.now(),
+        message_count: messages.length,
+      };
+      this.write_index_sync(index);
+    }
+
+    const serialized = messages.map((message) => JSON.stringify(message)).join('\n');
+    writeFileSync(path, serialized ? `${serialized}\n` : '', 'utf-8');
+  }
+
   archive_session(session_id: string): void {
     const index = this.read_index_sync();
     const idx = index.sessions.findIndex((e) => e.session_id === session_id);

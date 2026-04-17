@@ -699,6 +699,7 @@ async function handle_normal_turn(
     // Auto-compression: check if session needs compression before LLM call
     if (needs_compression(session.messages, DEFAULT_COMPRESSION_CONFIG)) {
       await session.compact();
+      ctx = build_llm_context(session, task_type, null, skill_reg, extra_system_messages);
     }
 
     // Stream LLM response with retry support

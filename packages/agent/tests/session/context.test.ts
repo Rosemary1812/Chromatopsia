@@ -251,6 +251,18 @@ describe('build_llm_context', () => {
     expect(allContent).toContain('third');
   });
 
+  it('preserves persisted summary system messages from session history', () => {
+    const session = makeSession({
+      messages: [
+        { role: 'system', content: '【历史摘要】之前已经完成 API 设计' },
+        { role: 'user', content: '继续实现' },
+      ],
+    });
+    const reg = makeSkillReg();
+    const ctx = build_llm_context(session, 'test', null, reg);
+    expect(ctx.messages.some((m) => m.role === 'system' && m.content.includes('【历史摘要】'))).toBe(true);
+  });
+
   it('empty session: messages only contain system prompt', () => {
     const session = makeSession({ messages: [] });
     const reg = makeSkillReg();

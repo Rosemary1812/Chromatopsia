@@ -47,6 +47,7 @@ const APPROVAL_RUN_SHELL_PATTERNS: RegExp[] = [
   /^\s*docker(?:\s|$)/i,
 ];
 const SHELL_CONTROL_OPERATOR_PATTERN = /[|;&><`]/;
+const SHELL_EXPANSION_PATTERN = /\$\(|\${|\$[A-Za-z_]/;
 
 export interface ApprovalHookOptions {
   auto_approve_safe?: boolean;
@@ -126,6 +127,10 @@ export class ApprovalHook {
     }
 
     if (SHELL_CONTROL_OPERATOR_PATTERN.test(normalized)) {
+      return true;
+    }
+
+    if (SHELL_EXPANSION_PATTERN.test(normalized)) {
       return true;
     }
 

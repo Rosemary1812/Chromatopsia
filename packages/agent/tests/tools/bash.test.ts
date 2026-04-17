@@ -26,6 +26,12 @@ describe('bash tool', () => {
       expect(result).not.toContain('~');
     });
 
+    it('should reject shell expansion patterns', () => {
+      expect(() => sandbox_bash_command('git status $(touch owned)', cwd)).toThrow(
+        'unsupported shell expansion',
+      );
+    });
+
     it('should handle multiline commands', () => {
       const result = sandbox_bash_command('echo a && echo b', cwd);
       expect(result).toBe('echo a && echo b');
