@@ -10,6 +10,7 @@ import { Footer } from './components/footer.js';
 import { useTuiStore } from './hooks.js';
 import type { TuiStore } from './store.js';
 import { getTheme, type TuiThemePalette } from './types.js';
+import { buildDynamicSlashCommands, mergeSlashCommands } from './commands.js';
 
 type AppProps = {
   store: TuiStore;
@@ -27,6 +28,14 @@ export function App({ store, runtime, approvalController, model, cwd }: AppProps
   const [shimmerFrame, setShimmerFrame] = useState(0);
   const mode = state.inputMode === 'approval' ? 'approval' : state.streaming ? 'working' : 'idle';
 
+  const refreshAvailableCommands = useCallback(() => {
+    store.setAvailableCommands(
+      mergeSlashCommands(
+        buildDynamicSlashCommands(runtime.list_slash_commands(), runtime.list_draft_skills()),
+      ),
+    );
+  }, [runtime, store]);
+
   const handleSubmit = useCallback(async (nextValue?: string) => {
     const input = (nextValue ?? state.pendingInput).trim();
     if (!input || state.inputMode !== 'normal') return;
@@ -35,7 +44,8 @@ export function App({ store, runtime, approvalController, model, cwd }: AppProps
       store.setPendingInput('');
       await runtime.handle_user_input(input);
     }
-  }, [runtime, state.inputMode, state.pendingInput, store]);
+    refreshAvailableCommands();
+  }, [refreshAvailableCommands, runtime, state.inputMode, state.pendingInput, store]);
 
   const handleApprove = useCallback(() => {
     approvalController.respond('approve');
@@ -50,6 +60,10 @@ export function App({ store, runtime, approvalController, model, cwd }: AppProps
       exit();
     }
   });
+
+  useEffect(() => {
+    refreshAvailableCommands();
+  }, [refreshAvailableCommands]);
 
   const latestTool = useMemo(
     () => Object.values(state.toolActivity).sort((left, right) => right.timestamp - left.timestamp)[0],
@@ -76,7 +90,7 @@ export function App({ store, runtime, approvalController, model, cwd }: AppProps
 
   return (
     <Box flexDirection="column" width="100%">
-      {state.transcript.length === 0 ? <Header model={model} cwd={cwd} mode={mode} version="1.0.0" theme={theme} /> : null}
+      <Header model={model} cwd={cwd} mode={mode} version="1.0.0" theme={theme} />
       <Box flexDirection="column" marginTop={1} rowGap={1}>
         {state.transcript.length > 0 ? <Transcript items={state.transcript} mode={mode} activeToolLabel={null} theme={theme} /> : null}
         {state.streaming ? (
@@ -94,6 +108,7 @@ export function App({ store, runtime, approvalController, model, cwd }: AppProps
           <InputBox
             value={state.pendingInput}
             disabled={false}
+            commands={state.availableCommands}
             onChange={(value) => store.setPendingInput(value)}
             onSubmit={(nextValue) => {
               void handleSubmit(nextValue);

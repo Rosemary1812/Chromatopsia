@@ -31,9 +31,10 @@ function applyEvents(store: TuiStore, events: RuntimeEvent[]) {
 
 describe('tui commands', () => {
   it('matches builtin slash commands', () => {
-    expect(matchBuiltinCommand('/help')?.command.name).toBe('help');
-    expect(matchBuiltinCommand('/clear')?.command.name).toBe('clear');
-    expect(matchBuiltinCommand('/exit')?.command.name).toBe('exit');
+    expect(matchBuiltinCommand('/help')?.command.input).toBe('/help');
+    expect(matchBuiltinCommand('/clear')?.command.input).toBe('/clear');
+    expect(matchBuiltinCommand('/exit')?.command.input).toBe('/exit');
+    expect(matchBuiltinCommand('/theme dark')?.command.input).toBe('/theme dark');
     expect(matchBuiltinCommand('hello')).toBeNull();
   });
 
@@ -42,6 +43,7 @@ describe('tui commands', () => {
     expect(help).toContain('/help');
     expect(help).toContain('/clear');
     expect(help).toContain('/exit');
+    expect(help).toContain('/theme dark');
   });
 
   it('executes /clear and calls clear callback', async () => {
@@ -63,6 +65,15 @@ describe('tui commands', () => {
     expect(handled).toBe(true);
     expect(clearConversation).toHaveBeenCalledTimes(1);
     expect(store.getState().transcript).toHaveLength(0);
+  });
+
+  it('executes /theme light locally', async () => {
+    const store = new TuiStore();
+
+    const handled = await executeBuiltinCommand('/theme light', store);
+
+    expect(handled).toBe(true);
+    expect(store.getState().themeMode).toBe('light');
   });
 });
 
@@ -204,6 +215,21 @@ describe('TuiStore', () => {
     expect(result.handled).toBe(true);
     expect(store.getState().commandHelpVisible).toBe(true);
     expect(store.getState().transcript.some((item) => item.kind === 'command_help')).toBe(true);
+  });
+
+  it('stores dynamically provided slash commands', () => {
+    const store = new TuiStore();
+
+    store.setAvailableCommands([
+      ...store.getState().availableCommands,
+      {
+        input: '/git-triage',
+        description: 'Run skill: Git 仓库排查',
+        source: 'skill',
+      },
+    ]);
+
+    expect(store.getState().availableCommands.some((item) => item.input === '/git-triage')).toBe(true);
   });
 
   it('captures notifications and errors', () => {

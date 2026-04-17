@@ -7,6 +7,7 @@ import type {
 
 export type TuiInputMode = "normal" | "approval";
 export type TuiThemeMode = "dark" | "light";
+export type TuiCommandSource = "builtin" | "skill" | "learning";
 
 export interface TuiThemePalette {
   primary: string;
@@ -85,6 +86,7 @@ export interface ToolActivityState {
 
 export interface TuiState {
   transcript: TranscriptItem[];
+  availableCommands: SlashCommand[];
   inputMode: TuiInputMode;
   themeMode: TuiThemeMode;
   currentTurnId: string | null;
@@ -107,10 +109,11 @@ export interface TuiCommandContext {
   exit?: () => void | Promise<void>;
 }
 
-export interface BuiltinCommand {
-  name: string;
+export interface SlashCommand {
+  input: string;
   description: string;
-  execute: (
+  source: TuiCommandSource;
+  execute?: (
     store: TuiStoreLike,
     context?: TuiCommandContext,
   ) => Promise<void> | void;
@@ -119,6 +122,7 @@ export interface BuiltinCommand {
 export interface TuiStoreLike {
   getState: () => TuiState;
   setPendingInput: (value: string) => void;
+  setAvailableCommands: (commands: SlashCommand[]) => void;
   setThemeMode: (mode: TuiThemeMode) => void;
   clearTranscript: () => void;
   appendCommandHelp: () => void;
@@ -126,7 +130,7 @@ export interface TuiStoreLike {
 }
 
 export interface TuiCommandMatch {
-  command: BuiltinCommand;
+  command: SlashCommand;
   raw: string;
 }
 

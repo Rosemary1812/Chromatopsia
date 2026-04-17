@@ -1,20 +1,27 @@
 import { Box, Text, useInput } from 'ink';
 import { useEffect, useState } from 'react';
-import { listBuiltinCommands } from '../commands.js';
-import type { TuiThemePalette } from '../types.js';
+import type { SlashCommand, TuiThemePalette } from '../types.js';
 
 type InputBoxProps = {
   value: string;
   disabled?: boolean;
+  commands: SlashCommand[];
   onChange: (value: string) => void;
   onSubmit: (nextValue?: string) => void;
   theme: TuiThemePalette;
 };
 
-function buildVisibleCommands(input: string) {
-  const commands = listBuiltinCommands();
+function buildVisibleCommands(input: string, commands: SlashCommand[]) {
   const query = input.startsWith('/') ? input.slice(1).trim().toLowerCase() : '';
-  return commands.filter((command) => command.name.includes(query)).slice(0, 5);
+  if (!query) {
+    return commands.slice(0, 8);
+  }
+  return commands
+    .filter((command) => {
+      const normalized = command.input.toLowerCase();
+      return normalized.includes(`/${query}`) || normalized.includes(query);
+    })
+    .slice(0, 8);
 }
 
 function HighlightedInput({ value, theme }: { value: string; theme: TuiThemePalette }) {
@@ -45,8 +52,8 @@ function HighlightedInput({ value, theme }: { value: string; theme: TuiThemePale
   );
 }
 
-export function InputBox({ value, disabled = false, onChange, onSubmit, theme }: InputBoxProps) {
-  const visibleCommands = buildVisibleCommands(value);
+export function InputBox({ value, disabled = false, commands, onChange, onSubmit, theme }: InputBoxProps) {
+  const visibleCommands = buildVisibleCommands(value, commands);
   const pickerVisible = value.startsWith('/');
   const [selectedIndex, setSelectedIndex] = useState(0);
 
@@ -74,11 +81,11 @@ export function InputBox({ value, disabled = false, onChange, onSubmit, theme }:
       }
     }
 
-    if (key.return) {
-      if (pickerVisible && visibleCommands[selectedIndex]) {
-        onSubmit(`/${visibleCommands[selectedIndex].name}`);
-        return;
-      }
+      if (key.return) {
+        if (pickerVisible && visibleCommands[selectedIndex]) {
+        onSubmit(visibleCommands[selectedIndex].input);
+          return;
+        }
       onSubmit();
       return;
     }
@@ -103,12 +110,12 @@ export function InputBox({ value, disabled = false, onChange, onSubmit, theme }:
         <Box flexDirection="column" borderStyle="single" borderColor={theme.surfaceBorder} paddingX={1}>
           <Text bold color={theme.primary}>Commands</Text>
           {visibleCommands.map((command, index) => (
-            <Box key={command.name}>
+            <Box key={command.input}>
               <Text bold color={index === selectedIndex ? theme.highlightedText : theme.textDim}>
                 {index === selectedIndex ? '❯ ' : '  '}
               </Text>
               <Text bold color={index === selectedIndex ? theme.highlightedText : theme.textPrimary}>
-                {`/${command.name}`}
+                {command.input}
               </Text>
               <Text color={theme.textDim}>{` ${command.description}`}</Text>
             </Box>

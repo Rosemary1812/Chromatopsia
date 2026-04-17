@@ -255,4 +255,263 @@ describe('repl/runtime', () => {
     expect(events.some((event) => event.type === 'turn_completed')).toBe(true);
     expect(events.every((event) => event.agentId === 'main')).toBe(true);
   });
+
+  it('exposes dynamic skill slash commands and load summary', async () => {
+    const session = create_mock_session();
+    const provider = create_mock_provider();
+    setup_common_mocks(session, provider);
+
+    vi.spyOn(skillStoreModule, 'SkillStore').mockReturnValue({
+      load: vi.fn(async () => {}),
+      list_drafts: vi.fn(() => [
+        {
+          id: 'draft-fix',
+          name: 'Draft Fix',
+          task_type: 'fix-bug',
+        },
+      ]),
+      approve_draft: vi.fn(async () => null),
+      reject_draft: vi.fn(async () => false),
+      getAll: vi.fn(() => [
+        {
+          id: 'git-triage',
+          name: 'Git 仓库排查',
+          trigger_condition: 'repo triage',
+          trigger_pattern: '^/rebase|^/triage',
+          steps: [],
+          pitfalls: [],
+          task_type: 'git',
+          created_at: 0,
+          updated_at: 0,
+          call_count: 0,
+          success_count: 0,
+        },
+      ]),
+      getManifest: vi.fn(() => [
+        {
+          id: 'git-triage',
+          name: 'Git 仓库排查',
+          description: 'repo triage',
+          triggers: ['repo triage'],
+          trigger_pattern: '^/rebase|^/triage',
+          task_type: 'git',
+          scope: 'builtin',
+          enabled: true,
+          priority: 80,
+          version: 1,
+          updated_at: new Date().toISOString(),
+          source_path: 'packages/agent/skills/builtin/git-triage.md',
+        },
+        {
+          id: 'draft-fix',
+          name: 'Draft Fix',
+          description: 'draft',
+          triggers: ['draft'],
+          task_type: 'fix-bug',
+          scope: 'learning_draft',
+          enabled: false,
+          priority: 10,
+          version: 1,
+          updated_at: new Date().toISOString(),
+          source_path: '.chromatopsia/skills/drafts/draft-fix.md',
+        },
+      ]),
+    } as unknown as skillStoreModule.SkillStore);
+
+    const agentRuntime = await create_agent_runtime({
+      working_dir: '/tmp',
+      provider: 'anthropic',
+      config: { api_key: 'test' },
+      runtime: { emit: vi.fn() },
+    });
+
+    expect(agentRuntime.list_slash_commands()).toEqual([
+      { input: '/git-triage', description: 'Run skill: Git 仓库排查' },
+      { input: '/rebase', description: 'Run skill: Git 仓库排查' },
+      { input: '/triage', description: 'Run skill: Git 仓库排查' },
+    ]);
+    expect(agentRuntime.list_draft_skills()).toEqual([
+      { id: 'draft-fix', name: 'Draft Fix', task_type: 'fix-bug' },
+    ]);
+    expect(agentRuntime.get_skill_load_message()).toContain('Loaded 2 skills');
+  });
+
+  it('executes an auto-registered slash alias for a loaded skill', async () => {
+    const session = create_mock_session();
+    const provider = create_mock_provider();
+    setup_common_mocks(session, provider);
+
+    vi.spyOn(skillStoreModule, 'SkillStore').mockReturnValue({
+      load: vi.fn(async () => {}),
+      list_drafts: vi.fn(() => []),
+      approve_draft: vi.fn(async () => null),
+      reject_draft: vi.fn(async () => false),
+      getAll: vi.fn(() => [
+        {
+          id: 'git-triage',
+          name: 'Git 仓库排查',
+          trigger_condition: 'repo triage',
+          steps: ['run_shell command="git status --short"'],
+          pitfalls: [],
+          task_type: 'git',
+          created_at: 0,
+          updated_at: 0,
+          call_count: 0,
+          success_count: 0,
+        },
+      ]),
+      getManifest: vi.fn(() => [
+        {
+          id: 'git-triage',
+          name: 'Git 仓库排查',
+          description: 'repo triage',
+          triggers: ['repo triage'],
+          task_type: 'git',
+          scope: 'builtin',
+          enabled: true,
+          priority: 80,
+          version: 1,
+          updated_at: new Date().toISOString(),
+          source_path: 'packages/agent/skills/builtin/git-triage.md',
+        },
+      ]),
+    } as unknown as skillStoreModule.SkillStore);
+
+    const executeSkillSpy = vi.spyOn(executorModule, 'execute_skill').mockResolvedValue([]);
+
+    const agentRuntime = await create_agent_runtime({
+      working_dir: '/tmp',
+      provider: 'anthropic',
+      config: { api_key: 'test' },
+      runtime: { emit: vi.fn() },
+    });
+
+    await agentRuntime.handle_user_input('/git-triage');
+
+    expect(executeSkillSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('emits a detailed assistant summary when skill execution succeeds', async () => {
+    const session = create_mock_session();
+    const provider = create_mock_provider();
+    setup_common_mocks(session, provider);
+
+    vi.spyOn(skillStoreModule, 'SkillStore').mockReturnValue({
+      load: vi.fn(async () => {}),
+      list_drafts: vi.fn(() => []),
+      approve_draft: vi.fn(async () => null),
+      reject_draft: vi.fn(async () => false),
+      getAll: vi.fn(() => [
+        {
+          id: 'git-triage',
+          name: 'Git 仓库排查',
+          trigger_condition: 'repo triage',
+          steps: ['run_shell command="git status --short"'],
+          pitfalls: [],
+          task_type: 'git',
+          created_at: 0,
+          updated_at: 0,
+          call_count: 0,
+          success_count: 0,
+        },
+      ]),
+      getManifest: vi.fn(() => [
+        {
+          id: 'git-triage',
+          name: 'Git 仓库排查',
+          description: 'repo triage',
+          triggers: ['repo triage'],
+          task_type: 'git',
+          scope: 'builtin',
+          enabled: true,
+          priority: 80,
+          version: 1,
+          updated_at: new Date().toISOString(),
+          source_path: 'packages/agent/skills/builtin/git-triage.md',
+        },
+      ]),
+    } as unknown as skillStoreModule.SkillStore);
+
+    vi.spyOn(executorModule, 'execute_skill').mockResolvedValue([
+      { tool_call_id: 'tc-1', output: 'working tree clean', success: true },
+    ]);
+
+    const events: RuntimeEvent[] = [];
+    const agentRuntime = await create_agent_runtime({
+      working_dir: '/tmp',
+      provider: 'anthropic',
+      config: { api_key: 'test' },
+      runtime: { emit: (event) => events.push(event) },
+    });
+
+    await agentRuntime.handle_user_input('/git-triage');
+
+    const assistantMessage = events.find((event) => event.type === 'assistant_message');
+    expect(assistantMessage?.type).toBe('assistant_message');
+    expect(assistantMessage && assistantMessage.type === 'assistant_message' ? assistantMessage.content : '').toContain('completed successfully');
+    expect(assistantMessage && assistantMessage.type === 'assistant_message' ? assistantMessage.content : '').toContain('working tree clean');
+  });
+
+  it('emits a detailed assistant summary when skill execution fails', async () => {
+    const session = create_mock_session();
+    const provider = create_mock_provider();
+    setup_common_mocks(session, provider);
+
+    vi.spyOn(skillStoreModule, 'SkillStore').mockReturnValue({
+      load: vi.fn(async () => {}),
+      list_drafts: vi.fn(() => []),
+      approve_draft: vi.fn(async () => null),
+      reject_draft: vi.fn(async () => false),
+      getAll: vi.fn(() => [
+        {
+          id: 'git-triage',
+          name: 'Git 仓库排查',
+          trigger_condition: 'repo triage',
+          steps: ['run_shell command="git status --short"', 'run_shell command="git diff --stat"'],
+          pitfalls: [],
+          task_type: 'git',
+          created_at: 0,
+          updated_at: 0,
+          call_count: 0,
+          success_count: 0,
+        },
+      ]),
+      getManifest: vi.fn(() => [
+        {
+          id: 'git-triage',
+          name: 'Git 仓库排查',
+          description: 'repo triage',
+          triggers: ['repo triage'],
+          task_type: 'git',
+          scope: 'builtin',
+          enabled: true,
+          priority: 80,
+          version: 1,
+          updated_at: new Date().toISOString(),
+          source_path: 'packages/agent/skills/builtin/git-triage.md',
+        },
+      ]),
+    } as unknown as skillStoreModule.SkillStore);
+
+    vi.spyOn(executorModule, 'execute_skill').mockResolvedValue([
+      { tool_call_id: 'tc-1', output: 'working tree clean', success: true },
+      { tool_call_id: 'tc-2', output: 'git diff failed with exit code 128', success: false },
+    ]);
+
+    const events: RuntimeEvent[] = [];
+    const agentRuntime = await create_agent_runtime({
+      working_dir: '/tmp',
+      provider: 'anthropic',
+      config: { api_key: 'test' },
+      runtime: { emit: (event) => events.push(event) },
+    });
+
+    await agentRuntime.handle_user_input('/git-triage');
+
+    const assistantMessage = events.find((event) => event.type === 'assistant_message');
+    expect(assistantMessage?.type).toBe('assistant_message');
+    expect(assistantMessage && assistantMessage.type === 'assistant_message' ? assistantMessage.content : '').toContain('failed');
+    expect(assistantMessage && assistantMessage.type === 'assistant_message' ? assistantMessage.content : '').toContain('Step 2 failed');
+    expect(assistantMessage && assistantMessage.type === 'assistant_message' ? assistantMessage.content : '').toContain('exit code 128');
+  });
 });

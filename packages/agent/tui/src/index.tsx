@@ -65,6 +65,17 @@ async function main() {
     },
   });
 
+  const startupSkillMessage = runtime.get_skill_load_message();
+  if (startupSkillMessage) {
+    store.handleRuntimeEvent({
+      type: 'notification',
+      message: startupSkillMessage,
+      agentId: 'main',
+      agentRole: 'main',
+      timestamp: Date.now(),
+    });
+  }
+
   const model = config.provider === 'anthropic'
     ? anthropicConfig?.model ?? 'default'
     : openaiConfig?.model ?? 'default';

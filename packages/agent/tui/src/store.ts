@@ -4,6 +4,7 @@ import { summarizeToolResult as defaultSummarizeToolResult } from './summarize.j
 import type {
   TuiThemeMode,
   RuntimeEventHandler,
+  SlashCommand,
   TranscriptItem,
   TuiState,
   TuiStoreLike,
@@ -14,6 +15,7 @@ import { DEFAULT_TUI_THEME_MODE } from './types.js';
 function createInitialState(initialState?: Partial<TuiState>): TuiState {
   return {
     transcript: [],
+    availableCommands: listBuiltinCommands(),
     inputMode: 'normal',
     themeMode: DEFAULT_TUI_THEME_MODE,
     currentTurnId: null,
@@ -62,6 +64,14 @@ export class TuiStore implements TuiStoreLike {
     this.emitChange();
   }
 
+  setAvailableCommands(commands: SlashCommand[]): void {
+    this.state = {
+      ...this.state,
+      availableCommands: [...commands],
+    };
+    this.emitChange();
+  }
+
   setThemeMode(mode: TuiThemeMode): void {
     if (this.state.themeMode === mode) return;
     this.state = {
@@ -87,7 +97,7 @@ export class TuiStore implements TuiStoreLike {
   }
 
   appendCommandHelp(): void {
-    const helpText = formatBuiltinCommandHelp(listBuiltinCommands());
+    const helpText = formatBuiltinCommandHelp(this.state.availableCommands);
     this.state = {
       ...this.state,
       commandHelpVisible: true,
@@ -116,7 +126,7 @@ export class TuiStore implements TuiStoreLike {
     const handled = await executeBuiltinCommand(input, this, {
       clearConversation: this.clearConversation,
       exit: this.exit,
-    });
+    }, this.state.availableCommands);
     return { handled };
   }
 

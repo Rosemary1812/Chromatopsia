@@ -108,6 +108,75 @@ export interface AgentRuntimeOptions {
 export interface AgentRuntimeResult {
   handle_user_input: (input: string) => Promise<void>;
   clear_conversation: () => void;
+  list_slash_commands: () => Array<{ input: string; description: string }>;
+  list_draft_skills: () => Array<{ id: string; name: string; task_type: string }>;
+  get_skill_load_message: () => string | null;
+}
+
+function build_skill_slash_aliases(skill: import('../foundation/types.js').Skill): string[] {
+  const aliases = new Set<string>([`/${skill.id}`]);
+  const slashMatches = skill.trigger_pattern?.match(/\/[A-Za-z0-9][A-Za-z0-9_-]*/g) ?? [];
+  for (const match of slashMatches) {
+    aliases.add(match);
+  }
+  return [...aliases];
+}
+
+function build_skill_load_message(entries: import('../foundation/types.js').SkillManifestEntry[]): string | null {
+  if (entries.length === 0) return null;
+
+  let builtin = 0;
+  let user = 0;
+  let drafts = 0;
+
+  for (const entry of entries) {
+    if (entry.scope === 'builtin') builtin++;
+    if (entry.scope === 'user' || entry.scope === 'project') user++;
+    if (entry.scope === 'learning_draft') drafts++;
+  }
+
+  const enabled = entries.filter((entry) => entry.scope !== 'learning_draft' && entry.enabled !== false);
+  return `Loaded ${entries.length} skills (${builtin} builtin, ${user} user, ${drafts} draft; ${enabled.length} active).`;
+}
+
+function summarize_skill_results(
+  skill: import('../foundation/types.js').Skill,
+  results: import('../foundation/types.js').ToolResult[],
+): string {
+  if (results.length === 0) {
+    return `Skill "${skill.name}" ran, but it produced no step results.`;
+  }
+
+  const failed: Array<{ index: number; result: import('../foundation/types.js').ToolResult }> = [];
+  const succeeded: Array<{ index: number; result: import('../foundation/types.js').ToolResult }> = [];
+
+  for (const [index, result] of results.entries()) {
+    if (result.success) {
+      succeeded.push({ index, result });
+    } else {
+      failed.push({ index, result });
+    }
+  }
+
+  const lines: string[] = [];
+  if (failed.length > 0) {
+    lines.push(`Skill "${skill.name}" failed.`);
+    for (const item of failed) {
+      const output = item.result.output?.trim() || 'Unknown error.';
+      lines.push(`- Step ${item.index + 1} failed: ${output}`);
+    }
+    if (succeeded.length > 0) {
+      lines.push(`Succeeded steps: ${succeeded.map((item) => item.index + 1).join(', ')}`);
+    }
+    return lines.join('\n');
+  }
+
+  lines.push(`Skill "${skill.name}" completed successfully.`);
+  for (const item of succeeded) {
+    const output = item.result.output?.trim();
+    lines.push(`- Step ${item.index + 1}: ${output || 'Done.'}`);
+  }
+  return lines.join('\n');
 }
 
 // ------------------------------------------------------------
@@ -232,6 +301,57 @@ export async function create_agent_runtime(options: AgentRuntimeOptions): Promis
       }, learningBatchTurns, learningMinConfidence)
     : null;
 
+  const build_runtime_skill_commands = () => {
+    const manifestById = new Map(skill_store.getManifest().map((entry) => [entry.id, entry]));
+    const commands = new Map<string, { input: string; description: string }>();
+
+    for (const skill of skill_store.getAll()) {
+      const manifest = manifestById.get(skill.id);
+      if (!manifest || manifest.scope === 'learning_draft' || manifest.enabled === false) {
+        continue;
+      }
+      for (const alias of build_skill_slash_aliases(skill)) {
+        const key = alias.toLowerCase();
+        if (!commands.has(key)) {
+          commands.set(key, {
+            input: alias,
+            description: `Run skill: ${skill.name}`,
+          });
+        }
+      }
+    }
+
+    return [...commands.values()].sort((left, right) => left.input.localeCompare(right.input));
+  };
+
+  const resolve_skill_from_slash_input = (input: string) => {
+    const firstToken = input.trim().split(/\s+/, 1)[0]?.toLowerCase();
+    if (!firstToken?.startsWith('/')) return null;
+
+    const skillsById = new Map(skill_store.getAll().map((skill) => [skill.id, skill]));
+
+    for (const entry of skill_store.getManifest()) {
+      if (entry.scope === 'learning_draft' || entry.enabled === false) continue;
+      const skill = skillsById.get(entry.id);
+      if (!skill) continue;
+
+      for (const alias of build_skill_slash_aliases(skill)) {
+        if (alias.toLowerCase() === firstToken) {
+          return skill;
+        }
+      }
+    }
+
+    return null;
+  };
+
+  const list_runtime_drafts = () =>
+    skill_store.list_drafts().map((skill) => ({
+      id: skill.id,
+      name: skill.name,
+      task_type: skill.task_type,
+    }));
+
   // ---- Tool context ----
   const tool_context: import('../foundation/types.js').ToolContext = {
     session,
@@ -265,7 +385,7 @@ export async function create_agent_runtime(options: AgentRuntimeOptions): Promis
     }
 
     // Skill pre-match: trigger_match() on user input
-    const matched_skill = skill_reg.trigger_match(trimmed);
+    const matched_skill = resolve_skill_from_slash_input(trimmed) ?? skill_reg.trigger_match(trimmed);
     if (matched_skill) {
       turnTaskType = matched_skill.task_type;
       const skillApprovalRequestHandler = async (request: import('../foundation/types.js').ApprovalRequest) => {
@@ -302,7 +422,7 @@ export async function create_agent_runtime(options: AgentRuntimeOptions): Promis
           emitRuntime({ type: 'notification', message: `[${matched_skill.name}] Step failed: ${result.output}` });
         }
       }
-      const skillSummary = `Executed skill: ${matched_skill.name} (${results.length} steps)`;
+      const skillSummary = summarize_skill_results(matched_skill, results);
       session.add_message({
         role: 'assistant',
         content: skillSummary,
@@ -313,7 +433,7 @@ export async function create_agent_runtime(options: AgentRuntimeOptions): Promis
       } catch {
         // best-effort memory write
       }
-      emitRuntime({ type: 'turn_completed', turnId, content: `Executed skill: ${matched_skill.name}` });
+      emitRuntime({ type: 'turn_completed', turnId, content: skillSummary });
       void maybe_schedule_learning(turnTaskType, trimmed);
       return;
     }
@@ -379,6 +499,8 @@ export async function create_agent_runtime(options: AgentRuntimeOptions): Promis
           source_path: `.chromatopsia/skills/user/${approved.id}.md`,
         });
         skill_reg.register(approved);
+        const aliases = build_skill_slash_aliases(approved).join(', ');
+        emitRuntime({ type: 'notification', message: `Skill loaded: ${approved.name}${aliases ? ` (${aliases})` : ''}` });
         emitRuntime({ type: 'turn_completed', turnId, content: `Draft approved and published: ${approved.name}` });
         return true;
       }
@@ -409,6 +531,9 @@ export async function create_agent_runtime(options: AgentRuntimeOptions): Promis
     clear_conversation: () => {
       session.clear();
     },
+    list_slash_commands: () => build_runtime_skill_commands(),
+    list_draft_skills: () => list_runtime_drafts(),
+    get_skill_load_message: () => build_skill_load_message(skill_store.getManifest()),
   };
 }
 
