@@ -12,6 +12,7 @@ import type {
   AgentEvents,
   LogLevel,
   ProviderConfig,
+  ProviderType,
   RuntimeAgentRole,
   RuntimeSink,
 } from '../foundation/types.js';
@@ -26,7 +27,8 @@ import { register_all_tools } from '../foundation/tools/index.js';
 import { execute_tool_calls_parallel } from './executor.js';
 import { execute_skill } from './executor.js';
 import { handle_slash_command as default_slash_handler } from './slash.js';
-import { createProvider } from '../foundation/llm/index.js';
+import { createProvider, resolveProviderConfig, normalizeProviderType } from '../foundation/llm/index.js';
+import { load_config } from '../config/loader.js';
 import { needs_compression, DEFAULT_COMPRESSION_CONFIG } from '../session/summarizer.js';
 import { MemoryIndexStore } from '../memory/index-store.js';
 import { MemoryTopicStore } from '../memory/topic-store.js';
@@ -48,8 +50,8 @@ import { resolveStoragePaths } from '../storage/paths.js';
 export interface ReplOptions {
   /** Working directory for the session */
   working_dir: string;
-  /** Provider type: 'anthropic' | 'openai'. Falls back to ANTHROPIC_API_KEY presence. */
-  provider?: 'anthropic' | 'openai';
+  /** Provider type alias. Falls back to config.yaml or environment variables. */
+  provider?: ProviderType;
   /** Provider configuration (api_key, model, etc.). Falls back to env vars. */
   config?: {
     api_key?: string;
@@ -87,7 +89,7 @@ export interface RunReplResult {
 export interface AgentRuntimeOptions {
   working_dir: string;
   config_path?: string;
-  provider?: 'anthropic' | 'openai';
+  provider?: ProviderType;
   config?: {
     api_key?: string;
     base_url?: string;
@@ -143,15 +145,23 @@ export async function create_agent_runtime(options: AgentRuntimeOptions): Promis
     agentRole = 'main',
   } = options;
 
-  // Fall back to env vars if not provided
-  const resolvedProvider = provider_type
+  const loadedAppConfig = app_config ?? (config_path ? await load_config(config_path) : undefined);
+
+  // Fall back to config file and env vars if not provided
+  const resolvedProvider: ProviderType = provider_type
+    ?? loadedAppConfig?.provider
     ?? (process.env.ANTHROPIC_API_KEY ? 'anthropic' : process.env.OPENAI_API_KEY ? 'openai' : 'anthropic');
+  const providerConfigFromApp = resolveProviderConfig(loadedAppConfig, resolvedProvider);
+  const providerFamily = normalizeProviderType(resolvedProvider);
+  const defaultApiKey = providerFamily === 'anthropic'
+    ? process.env.ANTHROPIC_API_KEY ?? process.env.CLAUDE_API_KEY ?? ''
+    : process.env.OPENAI_API_KEY ?? process.env.CODEX_API_KEY ?? '';
   const resolvedConfig: ProviderConfig = {
-    api_key: config?.api_key ?? process.env.ANTHROPIC_API_KEY ?? process.env.OPENAI_API_KEY ?? '',
-    base_url: config?.base_url,
-    model: config?.model,
-    max_tokens: config?.max_tokens,
-    timeout: config?.timeout,
+    api_key: config?.api_key ?? providerConfigFromApp?.api_key ?? defaultApiKey,
+    base_url: config?.base_url ?? providerConfigFromApp?.base_url,
+    model: config?.model ?? providerConfigFromApp?.model,
+    max_tokens: config?.max_tokens ?? providerConfigFromApp?.max_tokens,
+    timeout: config?.timeout ?? providerConfigFromApp?.timeout,
   };
 
   const isDebug = logLevel === 'debug';
@@ -170,7 +180,7 @@ export async function create_agent_runtime(options: AgentRuntimeOptions): Promis
   const provider = createProvider(resolvedProvider, resolvedConfig);
   const storagePaths = resolveStoragePaths({
     workingDir: working_dir,
-    appConfig: app_config,
+    appConfig: loadedAppConfig,
     configPath: config_path,
   });
   const session_manager = new SessionManager(storagePaths.sessionsDir, provider);
@@ -197,11 +207,11 @@ export async function create_agent_runtime(options: AgentRuntimeOptions): Promis
     skill_reg.register(skill);
   }
 
-  const learningEnabled = app_config?.learning?.enabled !== false;
-  const learningBatchTurns = app_config?.learning?.batch_turns ?? 20;
-  const learningMinConfidence = app_config?.learning?.min_confidence ?? 0.75;
-  const reminderEnabled = app_config?.learning?.reminder?.enabled !== false;
-  const reminderMaxPerSession = app_config?.learning?.reminder?.max_per_session ?? 3;
+  const learningEnabled = loadedAppConfig?.learning?.enabled !== false;
+  const learningBatchTurns = loadedAppConfig?.learning?.batch_turns ?? 20;
+  const learningMinConfidence = loadedAppConfig?.learning?.min_confidence ?? 0.75;
+  const reminderEnabled = loadedAppConfig?.learning?.reminder?.enabled !== false;
+  const reminderMaxPerSession = loadedAppConfig?.learning?.reminder?.max_per_session ?? 3;
   let reminderShown = 0;
   const historyGetter = (session_manager as unknown as { get_history?: () => SessionHistory }).get_history;
   const history = typeof historyGetter === 'function'

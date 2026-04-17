@@ -91,6 +91,8 @@ function blockToQuoteLines(block: MarkdownBlock): MarkdownSpan[][] {
       return block.lines.map((line) => [{ kind: 'code', text: line }]);
     case 'rule':
       return [[{ kind: 'text', text: '────────' }]];
+    default:
+      return [];
   }
 }
 
@@ -164,7 +166,7 @@ function renderSpans(spans: MarkdownSpan[]) {
         );
       case 'code':
         return (
-          <Text key={index} color={TUI_THEME.highlightedText} backgroundColor={TUI_THEME.secondaryBackground}>
+          <Text key={index} color={TUI_THEME.highlightedText}>
             {` ${span.text} `}
           </Text>
         );

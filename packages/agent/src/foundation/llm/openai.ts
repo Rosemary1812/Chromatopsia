@@ -1,6 +1,20 @@
-// T-05: OpenAI Provider implementation
+// T-05: OpenAI / OpenAI-compatible Provider implementation
 import OpenAI from 'openai';
-import type { LLMProvider, ProviderConfig, Message, ToolDefinition, StreamOptions, LLMResponse, ToolCall } from './provider.js';
+import type {
+  LLMProvider,
+  ProviderConfig,
+  Message,
+  ToolDefinition,
+  StreamOptions,
+  LLMResponse,
+  ToolCall,
+} from './provider.js';
+
+type OpenAIToolCallAccumulator = {
+  id: string;
+  name: string;
+  argumentsText: string;
+};
 
 export class OpenAIProvider implements LLMProvider {
   name = 'openai';
@@ -21,13 +35,10 @@ export class OpenAIProvider implements LLMProvider {
   }
 
   async chat(messages: Message[], tools?: ToolDefinition[]): Promise<LLMResponse> {
-    const openaiMessages = this.convertMessages(messages);
-    const openaiTools = this.convertTools(tools);
-
     const response = await this.client.chat.completions.create({
       model: this.model,
-      messages: openaiMessages,
-      tools: openaiTools,
+      messages: this.convertMessages(messages),
+      tools: this.convertTools(tools),
       tool_choice: 'auto',
     });
 
@@ -39,23 +50,22 @@ export class OpenAIProvider implements LLMProvider {
     tools?: ToolDefinition[],
     _options?: StreamOptions,
   ): AsyncGenerator<string, LLMResponse, void> {
-    const openaiMessages = this.convertMessages(messages);
-    const openaiTools = this.convertTools(tools);
-
     const stream = await this.client.chat.completions.create({
       model: this.model,
-      messages: openaiMessages,
-      tools: openaiTools,
+      messages: this.convertMessages(messages),
+      tools: this.convertTools(tools),
       tool_choice: 'auto',
       stream: true,
     });
 
     let fullContent = '';
+    let fullReasoning = '';
     let finishReason: 'stop' | 'tool_use' = 'stop';
-    let toolCalls: ToolCall[] = [];
+    const toolCalls = new Map<number, OpenAIToolCallAccumulator>();
 
     for await (const chunk of stream) {
-      const delta = chunk.choices[0]?.delta;
+      const choice = chunk.choices[0];
+      const delta = choice?.delta;
       if (!delta) continue;
 
       if (delta.content) {
@@ -63,29 +73,41 @@ export class OpenAIProvider implements LLMProvider {
         yield delta.content;
       }
 
-      if (delta.tool_calls) {
+      const reasoningChunk = this.extractReasoning(delta);
+      if (reasoningChunk) {
+        fullReasoning += reasoningChunk;
+      }
+
+      if (delta.tool_calls?.length) {
         finishReason = 'tool_use';
-        for (const tc of delta.tool_calls) {
-          if (tc.id && tc.function) {
-            let args: Record<string, unknown> = {};
-            if (tc.function.arguments) {
-              try {
-                args = JSON.parse(tc.function.arguments);
-              } catch {
-                args = {};
-              }
-            }
-            toolCalls.push({
-              id: tc.id ?? `tc-${Date.now()}`,
-              name: tc.function.name ?? 'unknown',
-              arguments: args,
-            });
+        for (const toolCallDelta of delta.tool_calls) {
+          const index = toolCallDelta.index ?? 0;
+          const current = toolCalls.get(index) ?? {
+            id: '',
+            name: '',
+            argumentsText: '',
+          };
+          if (toolCallDelta.id) current.id = toolCallDelta.id;
+          if (toolCallDelta.function?.name) current.name += toolCallDelta.function.name;
+          if (toolCallDelta.function?.arguments) {
+            current.argumentsText += toolCallDelta.function.arguments;
           }
+          toolCalls.set(index, current);
         }
+      }
+
+      if (choice?.finish_reason === 'tool_calls') {
+        finishReason = 'tool_use';
       }
     }
 
-    return { content: fullContent, tool_calls: toolCalls, finish_reason: finishReason };
+    const finalizedToolCalls = this.finalizeToolCalls(toolCalls);
+    return {
+      content: fullContent,
+      reasoning: fullReasoning || undefined,
+      tool_calls: finalizedToolCalls.length > 0 ? finalizedToolCalls : undefined,
+      finish_reason: finalizedToolCalls.length > 0 ? 'tool_use' : finishReason,
+    };
   }
 
   private convertMessages(messages: Message[]): OpenAI.Chat.ChatCompletionMessageParam[] {
@@ -135,38 +157,64 @@ export class OpenAIProvider implements LLMProvider {
     })) as unknown as OpenAI.Chat.ChatCompletionTool[];
   }
 
-  private convertResponse(
-    response: OpenAI.Chat.ChatCompletion,
-  ): LLMResponse {
+  private finalizeToolCalls(toolCalls: Map<number, OpenAIToolCallAccumulator>): ToolCall[] {
+    return Array.from(toolCalls.entries())
+      .sort(([left], [right]) => left - right)
+      .map(([, toolCall]) => ({
+        id: toolCall.id || `tc-${Date.now()}`,
+        name: toolCall.name || 'unknown',
+        arguments: this.parseArguments(toolCall.argumentsText),
+      }));
+  }
+
+  private parseArguments(argumentsText?: string): Record<string, unknown> {
+    if (!argumentsText) return {};
+    try {
+      return JSON.parse(argumentsText) as Record<string, unknown>;
+    } catch {
+      return {};
+    }
+  }
+
+  private extractReasoning(value: unknown): string {
+    if (!value || typeof value !== 'object') return '';
+
+    const candidate = value as { reasoning_content?: unknown };
+    const raw = candidate.reasoning_content;
+    if (typeof raw === 'string') return raw;
+    if (Array.isArray(raw)) {
+      return raw
+        .map((part) => {
+          if (typeof part === 'string') return part;
+          if (part && typeof part === 'object' && 'text' in part && typeof part.text === 'string') {
+            return part.text;
+          }
+          return '';
+        })
+        .join('');
+    }
+    return '';
+  }
+
+  private convertResponse(response: OpenAI.Chat.ChatCompletion): LLMResponse {
     const choice = response.choices[0];
     if (!choice) {
       return { content: '', finish_reason: 'stop' };
     }
 
-    const message = choice.message;
-    let toolCalls: ToolCall[] | undefined;
-
-    if (message.tool_calls?.length) {
-      toolCalls = message.tool_calls.map((tc) => {
-        let args: Record<string, unknown> = {};
-        if (tc.function.arguments) {
-          try {
-            args = JSON.parse(tc.function.arguments);
-          } catch {
-            args = {};
-          }
-        }
-        return {
-          id: tc.id,
-          name: tc.function.name,
-          arguments: args,
-        };
-      });
-    }
+    const message = choice.message as OpenAI.Chat.ChatCompletionMessage & {
+      reasoning_content?: string | Array<{ text?: string } | string>;
+    };
+    const toolCalls = message.tool_calls?.map((toolCall) => ({
+      id: toolCall.id,
+      name: toolCall.function.name,
+      arguments: this.parseArguments(toolCall.function.arguments),
+    }));
 
     return {
       content: message.content ?? '',
-      tool_calls: toolCalls,
+      reasoning: this.extractReasoning(message as unknown as Record<string, unknown>) || undefined,
+      tool_calls: toolCalls?.length ? toolCalls : undefined,
       finish_reason: toolCalls?.length ? 'tool_use' : 'stop',
     };
   }

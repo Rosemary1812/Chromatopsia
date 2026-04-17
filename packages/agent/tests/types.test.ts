@@ -58,9 +58,10 @@ describe('types', () => {
   });
 
   it('LLMResponse should have stop and tool_use finish_reason', () => {
-    const stop: LLMResponse = { content: 'hello', finish_reason: 'stop' };
+    const stop: LLMResponse = { content: 'hello', reasoning: 'analysis', finish_reason: 'stop' };
     const tool: LLMResponse = { content: '', tool_calls: [], finish_reason: 'tool_use' };
     expect(stop.finish_reason).toBe('stop');
+    expect(stop.reasoning).toBe('analysis');
     expect(tool.finish_reason).toBe('tool_use');
   });
 
@@ -132,17 +133,17 @@ describe('types', () => {
     expect(resp.modified_args?.command).toBe('rm -rf /tmp/test2');
   });
 
-  it('AppConfig should accept both provider types', () => {
+  it('AppConfig should accept provider aliases', () => {
     const anthropic: AppConfig = {
-      provider: 'anthropic',
+      provider: 'claude',
       anthropic: { api_key: 'sk-ant-xxx', model: 'claude-opus-4-6' },
     };
     const openai: AppConfig = {
-      provider: 'openai',
+      provider: 'openai-compatible',
       openai: { api_key: 'sk-xxx', base_url: 'http://localhost:11434/v1' },
     };
-    expect(anthropic.provider).toBe('anthropic');
-    expect(openai.provider).toBe('openai');
+    expect(anthropic.provider).toBe('claude');
+    expect(openai.provider).toBe('openai-compatible');
   });
 
   it('CompressionConfig should have sane defaults', () => {

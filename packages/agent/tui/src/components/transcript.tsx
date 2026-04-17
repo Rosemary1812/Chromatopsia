@@ -8,15 +8,29 @@ type TranscriptProps = {
   activeToolLabel?: string | null;
 };
 
+function getTurnId(item: TranscriptItem): string | undefined {
+  switch (item.kind) {
+    case 'user':
+    case 'assistant':
+    case 'tool':
+      return item.turnId;
+    default:
+      return undefined;
+  }
+}
+
 export function Transcript({ items }: TranscriptProps) {
-  const latestTurnId = [...items].reverse().find((item) => 'turnId' in item && item.turnId)?.turnId;
+  const latestTurnId = [...items]
+    .reverse()
+    .map((item) => getTurnId(item))
+    .find((turnId) => Boolean(turnId));
 
   let visibleItems = items.slice(-4);
   if (latestTurnId) {
     let startIndex = items.length - 1;
     while (startIndex >= 0) {
       const item = items[startIndex];
-      const sameTurn = 'turnId' in item && item.turnId === latestTurnId;
+      const sameTurn = getTurnId(item) === latestTurnId;
       const isNotification = item.kind === 'notification';
       if (!sameTurn && !isNotification) {
         break;

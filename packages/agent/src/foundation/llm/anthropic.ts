@@ -67,6 +67,18 @@ export class AnthropicProvider implements LLMProvider {
     };
   }
 
+  private buildSystemPrompt(messages: Message[]): Array<Record<string, unknown>> | undefined {
+    const systemBlocks = messages
+      .filter((msg) => msg.role === 'system')
+      .map((msg) => ({
+        type: 'text',
+        text: msg.content,
+        ...(msg.cache_control ? { cache_control: msg.cache_control } : {}),
+      }));
+
+    return systemBlocks.length > 0 ? systemBlocks : undefined;
+  }
+
   // Convert internal Message to Anthropic API message format.
   // Minimax requires content to be a block array: [{ type: 'text', text: '...' }]
   // tool role messages must include the tool_call_id.
@@ -100,12 +112,6 @@ export class AnthropicProvider implements LLMProvider {
         content: blocks as unknown as string,
       } as Anthropic.MessageParam;
     }
-    if (msg.role === 'system') {
-      return {
-        role: 'user',
-        content: [{ type: 'text', text: msg.content }],
-      } as Anthropic.MessageParam;
-    }
     // user or assistant: must be block array
     const text = msg.content || '.';
     return {
@@ -122,18 +128,14 @@ export class AnthropicProvider implements LLMProvider {
       throw new Error('AnthropicProvider not initialized');
     }
 
-    const systemParts: string[] = [];
+    const systemContent = this.buildSystemPrompt(messages);
     const conversationMessages: Anthropic.MessageParam[] = [];
 
     for (const msg of messages) {
-      if (msg.role === 'system') {
-        systemParts.push(msg.content);
-      } else {
+      if (msg.role !== 'system') {
         conversationMessages.push(this.toApiMessage(msg));
       }
     }
-
-    const systemContent = systemParts.join('\n\n');
 
     // Guard: Minimax requires messages array to be non-empty
     if (conversationMessages.length === 0) {
@@ -152,7 +154,7 @@ export class AnthropicProvider implements LLMProvider {
           this.client!.messages.create({
             model: this.model,
             max_tokens: maxTokens,
-            system: systemContent || undefined,
+            system: (systemContent || undefined) as any,
             messages: conversationMessages,
             tools: anthropicTools,
           }),
@@ -171,10 +173,13 @@ export class AnthropicProvider implements LLMProvider {
 
       const toolCalls: ToolCall[] = [];
       let content = '';
+      let reasoning = '';
 
-      for (const block of response.content) {
+      for (const block of response.content as any[]) {
         if (block.type === 'text') {
           content += block.text;
+        } else if (block.type === 'thinking') {
+          reasoning += block.thinking;
         } else if (block.type === 'tool_use') {
           const tc = this.toInternalToolCall(block);
           if (tc) toolCalls.push(tc);
@@ -183,6 +188,7 @@ export class AnthropicProvider implements LLMProvider {
 
       return {
         content,
+        reasoning: reasoning || undefined,
         tool_calls: toolCalls.length > 0 ? toolCalls : undefined,
         finish_reason: toolCalls.length > 0 ? 'tool_use' : 'stop',
       };
@@ -205,13 +211,11 @@ export class AnthropicProvider implements LLMProvider {
       throw new Error('AnthropicProvider not initialized');
     }
 
-    const systemParts: string[] = [];
+    const systemContent = this.buildSystemPrompt(messages);
     const conversationMessages: Anthropic.MessageParam[] = [];
 
     for (const msg of messages) {
-      if (msg.role === 'system') {
-        systemParts.push(msg.content);
-      } else {
+      if (msg.role !== 'system') {
         conversationMessages.push(this.toApiMessage(msg));
       }
     }
@@ -224,7 +228,6 @@ export class AnthropicProvider implements LLMProvider {
       } as Anthropic.MessageParam);
     }
 
-    const systemContent = systemParts.join('\n\n');
     const anthropicTools = tools ? this.toAnthropicTools(tools) : undefined;
     const maxTokens = this.config?.max_tokens ?? DEFAULT_MAX_TOKENS;
 
@@ -233,7 +236,7 @@ export class AnthropicProvider implements LLMProvider {
         async () => this.client!.messages.stream({
           model: this.model,
           max_tokens: maxTokens,
-          system: systemContent || undefined,
+          system: (systemContent || undefined) as any,
           messages: conversationMessages,
           tools: anthropicTools,
         }),
@@ -244,11 +247,14 @@ export class AnthropicProvider implements LLMProvider {
       );
 
       let fullContent = '';
+      let fullReasoning = '';
       const toolCalls: ToolCall[] = [];
       // Accumulate partial JSON for streaming tool calls
       const partialJsonAccumulator = new Map<string, string>();
+      const blockToolCallIds = new Map<number, string>();
 
-      for await (const event of stream) {
+      for await (const rawEvent of stream as any) {
+        const event = rawEvent as any;
         if (event.type === 'content_block_start') {
           const block = event.content_block;
           if (block.type === 'tool_use') {
@@ -258,6 +264,9 @@ export class AnthropicProvider implements LLMProvider {
               arguments: {},
             };
             partialJsonAccumulator.set(block.id, '');
+            if (typeof event.index === 'number') {
+              blockToolCallIds.set(event.index, block.id);
+            }
             toolCalls.push(tc);
             if (options?.on_tool_call_start) {
               options.on_tool_call_start(tc);
@@ -268,18 +277,27 @@ export class AnthropicProvider implements LLMProvider {
           if (delta.type === 'text_delta') {
             fullContent += delta.text;
             yield delta.text;
+          } else if (delta.type === 'thinking_delta') {
+            fullReasoning += delta.thinking;
           } else if (delta.type === 'input_json_delta') {
             // Accumulate tool input JSON fragments by tool call id
-            if (toolCalls.length > 0) {
-              const lastTc = toolCalls[toolCalls.length - 1];
-              const accumulated = partialJsonAccumulator.get(lastTc.id) ?? '';
-              partialJsonAccumulator.set(lastTc.id, accumulated + delta.partial_json);
+            const toolCallId = typeof event.index === 'number'
+              ? blockToolCallIds.get(event.index)
+              : toolCalls[toolCalls.length - 1]?.id;
+            if (toolCallId) {
+              const accumulated = partialJsonAccumulator.get(toolCallId) ?? '';
+              partialJsonAccumulator.set(toolCallId, accumulated + delta.partial_json);
             }
           }
         } else if (event.type === 'content_block_stop') {
           // Content block is done - finalize tool call arguments
-          if (toolCalls.length > 0) {
-            const lastTc = toolCalls[toolCalls.length - 1];
+          const toolCallId = typeof event.index === 'number'
+            ? blockToolCallIds.get(event.index)
+            : toolCalls[toolCalls.length - 1]?.id;
+          const lastTc = toolCallId
+            ? toolCalls.find((toolCall) => toolCall.id === toolCallId)
+            : toolCalls[toolCalls.length - 1];
+          if (lastTc) {
             const partialJson = partialJsonAccumulator.get(lastTc.id);
             if (partialJson) {
               try {
@@ -303,6 +321,7 @@ export class AnthropicProvider implements LLMProvider {
       // Note: the return value is what the for...of receives when the generator finishes
       return {
         content: fullContent,
+        reasoning: fullReasoning || undefined,
         tool_calls: toolCalls.length > 0 ? toolCalls : undefined,
         finish_reason: toolCalls.length > 0 ? 'tool_use' : 'stop',
       };

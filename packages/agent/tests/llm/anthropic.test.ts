@@ -145,6 +145,31 @@ describe('AnthropicProvider', () => {
       );
     });
 
+    it('should send system prompt as independent Anthropic system blocks', async () => {
+      const messages: Message[] = [
+        { role: 'system', content: 'Core instruction', cache_control: { type: 'ephemeral' } },
+        { role: 'user', content: 'Hello' },
+      ];
+
+      __mockMessagesCreate.mockResolvedValueOnce({
+        content: [{ type: 'text', text: 'Response' }],
+        stop_reason: 'end_turn',
+      });
+
+      await provider.chat(messages);
+
+      expect(__mockMessagesCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          system: [{
+            type: 'text',
+            text: 'Core instruction',
+            cache_control: { type: 'ephemeral' },
+          }],
+          messages: [{ role: 'user', content: [{ type: 'text', text: 'Hello' }] }],
+        }),
+      );
+    });
+
     it('should pass tools to Anthropic API', async () => {
       const messages: Message[] = [{ role: 'user', content: 'Do something' }];
       const tools: ToolDefinition[] = [
@@ -195,6 +220,22 @@ describe('AnthropicProvider', () => {
 
       await expect(provider.chat(messages)).rejects.toThrow('Network error');
     });
+
+    it('should preserve thinking blocks in non-stream responses', async () => {
+      const messages: Message[] = [{ role: 'user', content: 'Think' }];
+
+      __mockMessagesCreate.mockResolvedValueOnce({
+        content: [
+          { type: 'thinking', thinking: 'analysis' },
+          { type: 'text', text: 'answer' },
+        ],
+        stop_reason: 'end_turn',
+      });
+
+      const response = await provider.chat(messages);
+      expect(response.reasoning).toBe('analysis');
+      expect(response.content).toBe('answer');
+    });
   });
 
   describe('chat_stream()', () => {
@@ -244,6 +285,56 @@ describe('AnthropicProvider', () => {
       }
 
       expect(chunks).toEqual(['Hello ', 'there!']);
+    });
+
+    it('should collect thinking_delta and indexed input_json_delta fragments', async () => {
+      const messages: Message[] = [{ role: 'user', content: 'Run a command' }];
+
+      __mockMessagesStream.mockResolvedValueOnce({
+        async *[Symbol.asyncIterator]() {
+          yield {
+            type: 'content_block_start',
+            index: 1,
+            content_block: { type: 'tool_use', id: 'toolu_02', name: 'run_shell' },
+          };
+          yield {
+            type: 'content_block_delta',
+            delta: { type: 'thinking_delta', thinking: 'considering ' },
+          };
+          yield {
+            type: 'content_block_delta',
+            index: 1,
+            delta: { type: 'input_json_delta', partial_json: '{"command":"pwd"' },
+          };
+          yield {
+            type: 'content_block_delta',
+            index: 1,
+            delta: { type: 'input_json_delta', partial_json: '}' },
+          };
+          yield {
+            type: 'content_block_stop',
+            index: 1,
+          };
+        },
+      });
+
+      const stream = provider.chat_stream(messages, undefined, { on_tool_call_start: vi.fn() });
+      let finalResponse: any;
+      while (true) {
+        const next = await stream.next();
+        if (next.done) {
+          finalResponse = next.value;
+          break;
+        }
+      }
+
+      expect(finalResponse.reasoning).toBe('considering ');
+      expect(finalResponse.tool_calls).toEqual([{
+        id: 'toolu_02',
+        name: 'run_shell',
+        arguments: { command: 'pwd' },
+      }]);
+      expect(finalResponse.finish_reason).toBe('tool_use');
     });
 
     // system_hint is not yet implemented in chat_stream; when implemented, prepend to first user message

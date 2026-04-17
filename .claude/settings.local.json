@@ -30,7 +30,8 @@
       "Bash(npx --package=typescript tsc --noEmit -p tsconfig.json)",
       "Bash(pnpm run:*)",
       "Bash(pnpm build:agent)",
-      "Bash(timeout 5 pnpm dev:cli)"
+      "Bash(timeout 5 pnpm dev:cli)",
+      "Bash(git commit:*)"
     ]
   }
 }

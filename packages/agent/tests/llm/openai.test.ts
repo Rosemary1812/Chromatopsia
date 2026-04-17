@@ -257,6 +257,91 @@ describe('OpenAIProvider', () => {
       expect(result.finish_reason).toBe('stop');
       expect(result.tool_calls).toBeUndefined();
     });
+
+    it('should preserve reasoning_content in non-stream responses', async () => {
+      const provider = new OpenAIProvider(baseConfig);
+
+      mockCreate.mockResolvedValueOnce({
+        choices: [{
+          message: {
+            content: 'Final answer',
+            role: 'assistant',
+            reasoning_content: 'internal reasoning',
+          },
+          finish_reason: 'stop',
+        }],
+      });
+
+      const result = await provider.chat([{ role: 'user', content: 'Think first' }]);
+      expect(result.reasoning).toBe('internal reasoning');
+    });
+  });
+
+  describe('chat_stream()', () => {
+    it('should merge text, reasoning, and streamed tool call argument fragments', async () => {
+      const provider = new OpenAIProvider(baseConfig);
+
+      mockCreate.mockResolvedValueOnce({
+        async *[Symbol.asyncIterator]() {
+          yield {
+            choices: [{
+              delta: {
+                content: 'Checking ',
+                reasoning_content: 'step-1 ',
+              },
+            }],
+          };
+          yield {
+            choices: [{
+              delta: {
+                content: 'files',
+                tool_calls: [{
+                  index: 0,
+                  id: 'call_1',
+                  function: { name: 'read_file', arguments: '{"file"' },
+                }],
+              },
+            }],
+          };
+          yield {
+            choices: [{
+              delta: {
+                tool_calls: [{
+                  index: 0,
+                  function: { arguments: ':"x.txt"}' },
+                }],
+              },
+              finish_reason: 'tool_calls',
+            }],
+          };
+        },
+      });
+
+      const stream = provider.chat_stream([{ role: 'user', content: 'Inspect x.txt' }]);
+      const chunks: string[] = [];
+      let finalResponse: any;
+
+      while (true) {
+        const next = await stream.next();
+        if (next.done) {
+          finalResponse = next.value;
+          break;
+        }
+        chunks.push(next.value);
+      }
+
+      expect(chunks).toEqual(['Checking ', 'files']);
+      expect(finalResponse).toEqual({
+        content: 'Checking files',
+        reasoning: 'step-1 ',
+        tool_calls: [{
+          id: 'call_1',
+          name: 'read_file',
+          arguments: { file: 'x.txt' },
+        }],
+        finish_reason: 'tool_use',
+      });
+    });
   });
 
   describe('Function Calling format conversion', () => {

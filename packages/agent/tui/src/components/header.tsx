@@ -1,5 +1,5 @@
 import { Box, Text } from "ink";
-import { BRAND_LOGO, TUI_THEME, truncateMiddle } from "../types.js";
+import { BRAND_LOGO, TUI_THEME, getModeColor, getModeLabel, truncateMiddle } from "../types.js";
 
 type HeaderProps = {
   model: string;
@@ -24,6 +24,7 @@ export function Header({ model, cwd, mode, version }: HeaderProps) {
             {"Chromatopsia"}
           </Text>
           <Text color={TUI_THEME.textDim}>{`v${version}`}</Text>
+          <Text color={getModeColor(mode)}>{getModeLabel(mode)}</Text>
         </Box>
         <Text color={TUI_THEME.textDim}>{model}</Text>
         <Text color={TUI_THEME.textDim}>{truncateMiddle(cwd)}</Text>

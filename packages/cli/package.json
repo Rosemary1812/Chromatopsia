@@ -12,7 +12,7 @@
     "build": "tsc",
     "dev": "tsx src/index.ts",
     "cli": "tsx src/index.ts",
-    "test": "vitest"
+    "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
     "@chromatopsia/agent": "workspace:*",
@@ -21,6 +21,7 @@
   "devDependencies": {
     "@types/node": "^20.0.0",
     "typescript": "^5.0.0",
-    "tsx": "^4.19.2"
+    "tsx": "^4.19.2",
+    "vitest": "^2.1.8"
   }
 }

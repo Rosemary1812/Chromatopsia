@@ -84,6 +84,33 @@ openai:
     expect(config.openai?.model).toBe('gpt-4o');
   });
 
+  it('loads openai-compatible provider config', async () => {
+    const configPath = resolve(TEST_DIR, 'config-openai-compatible.yaml');
+    await writeFile(configPath, `
+provider: openai-compatible
+openai-compatible:
+  api_key: sk-compatible
+  base_url: https://api.openrouter.ai/v1
+  model: openai/gpt-4.1
+`);
+    const config = await load_config(configPath);
+    expect(config.provider).toBe('openai-compatible');
+    expect(config['openai-compatible']?.base_url).toBe('https://api.openrouter.ai/v1');
+  });
+
+  it('loads claude alias config', async () => {
+    const configPath = resolve(TEST_DIR, 'config-claude.yaml');
+    await writeFile(configPath, `
+provider: claude
+claude:
+  api_key: sk-ant-alias
+  model: claude-sonnet-4-5
+`);
+    const config = await load_config(configPath);
+    expect(config.provider).toBe('claude');
+    expect(config.claude?.model).toBe('claude-sonnet-4-5');
+  });
+
   it('loads tools and approval config', async () => {
     const configPath = resolve(TEST_DIR, 'config-full.yaml');
     await writeFile(configPath, `

@@ -6,8 +6,13 @@
 export type {
   LLMProvider,
   ProviderConfig,
+  ProviderType,
+  ProviderFamily,
   StreamOptions,
   LLMResponse,
+  ChatRequest,
+  ChatResponse,
+  StreamEvent,
   Message,
   ToolCall,
   ToolResult,

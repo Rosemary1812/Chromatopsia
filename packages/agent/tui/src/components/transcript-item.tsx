@@ -36,7 +36,7 @@ export function TranscriptItemView({ item }: TranscriptItemProps) {
   switch (item.kind) {
     case 'user':
       return (
-        <Box columnGap={1} width="100%" backgroundColor={TUI_THEME.secondaryBackground}>
+        <Box columnGap={1} width="100%">
           <Text bold color={TUI_THEME.textPrimary}>{'❯'}</Text>
           <Text color={TUI_THEME.textPrimary}>{item.text}</Text>
         </Box>

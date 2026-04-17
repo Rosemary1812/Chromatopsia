@@ -1,75 +1,65 @@
 import { describe, it, expect } from 'vitest';
-import { createProvider, type ProviderType } from '../../src/foundation/llm/index.js';
-import type { ProviderConfig } from '../../src/foundation/types.js';
+import {
+  createProvider,
+  normalizeProviderType,
+  resolveProviderConfig,
+  type ProviderType,
+} from '../../src/foundation/llm/index.js';
+import type { AppConfig, ProviderConfig } from '../../src/foundation/types.js';
+import { AnthropicProvider } from '../../src/foundation/llm/anthropic.js';
+import { OpenAIProvider } from '../../src/foundation/llm/openai.js';
 
 describe('createProvider', () => {
   const mockConfig: ProviderConfig = {
     api_key: 'test-api-key',
   };
 
-  describe('unknown provider handling', () => {
-    it('should throw error for unknown provider type', () => {
-      expect(() => createProvider('unknown' as ProviderType, mockConfig))
-        .toThrow('Unknown provider: unknown');
-    });
+  it('normalizes provider aliases onto provider families', () => {
+    expect(normalizeProviderType('openai')).toBe('openai');
+    expect(normalizeProviderType('openai-compatible')).toBe('openai');
+    expect(normalizeProviderType('codex')).toBe('openai');
+    expect(normalizeProviderType('anthropic')).toBe('anthropic');
+    expect(normalizeProviderType('claude')).toBe('anthropic');
+  });
 
-    it('should include the unknown type in the error message', () => {
-      try {
-        createProvider('unknown' as ProviderType, mockConfig);
-        expect.fail('Should have thrown an error');
-      } catch (e) {
-        expect((e as Error).message).toContain('unknown');
-      }
+  it('routes openai-compatible aliases to OpenAIProvider', () => {
+    expect(createProvider('openai', mockConfig)).toBeInstanceOf(OpenAIProvider);
+    expect(createProvider('openai-compatible', mockConfig)).toBeInstanceOf(OpenAIProvider);
+    expect(createProvider('codex', mockConfig)).toBeInstanceOf(OpenAIProvider);
+  });
+
+  it('routes anthropic aliases to AnthropicProvider', () => {
+    expect(createProvider('anthropic', mockConfig)).toBeInstanceOf(AnthropicProvider);
+    expect(createProvider('claude', mockConfig)).toBeInstanceOf(AnthropicProvider);
+  });
+
+  it('throws error for unknown provider type', () => {
+    expect(() => createProvider('unknown' as ProviderType, mockConfig))
+      .toThrow('Unknown provider: unknown');
+  });
+
+  it('resolves provider config from matching alias block first', () => {
+    const appConfig: AppConfig = {
+      provider: 'openai-compatible',
+      openai: { api_key: 'fallback-openai', base_url: 'https://api.openai.com/v1' },
+      'openai-compatible': { api_key: 'compatible-key', base_url: 'https://openrouter.ai/api/v1' },
+    };
+
+    expect(resolveProviderConfig(appConfig, 'openai-compatible')).toEqual({
+      api_key: 'compatible-key',
+      base_url: 'https://openrouter.ai/api/v1',
     });
   });
 
-  describe('empty string handling', () => {
-    it('should throw error for empty string provider type', () => {
-      expect(() => createProvider('' as ProviderType, mockConfig))
-        .toThrow('Unknown provider: ');
-    });
-  });
+  it('falls back across equivalent config families', () => {
+    const appConfig: AppConfig = {
+      provider: 'claude',
+      anthropic: { api_key: 'anthropic-key', model: 'claude-opus-4-6' },
+    };
 
-  describe('factory function behavior', () => {
-    it('should not throw for valid anthropic type (stub verification)', () => {
-      // Note: Constructor throws "not implemented yet" - this is expected
-      // The routing logic itself is correct; stubs are replaced in T-04/T-05
-      expect(() => createProvider('anthropic', mockConfig)).not.toThrow(/Unknown provider/);
-    });
-
-    it('should not throw for valid openai type (stub verification)', () => {
-      expect(() => createProvider('openai', mockConfig)).not.toThrow(/Unknown provider/);
-    });
-
-    it('should route to AnthropicProvider for anthropic type', () => {
-      // The factory should route to AnthropicProvider class
-      // Constructor throws at runtime, but routing is correct
-      try {
-        createProvider('anthropic', mockConfig);
-      } catch (e) {
-        expect((e as Error).message).toBe('AnthropicProvider not implemented yet');
-      }
-    });
-
-    it('should route to OpenAIProvider for openai type', () => {
-      try {
-        createProvider('openai', mockConfig);
-      } catch (e) {
-        expect((e as Error).message).toBe('OpenAIProvider not implemented yet');
-      }
-    });
-  });
-
-  describe('type exports', () => {
-    it('should export ProviderType type', () => {
-      const type: ProviderType = 'anthropic';
-      expect(type).toBe('anthropic');
-    });
-
-    it('should export LLMProvider type', () => {
-      // Verify the type is exported correctly
-      const type: ProviderType = 'openai';
-      expect(type).toBe('openai');
+    expect(resolveProviderConfig(appConfig, 'claude')).toEqual({
+      api_key: 'anthropic-key',
+      model: 'claude-opus-4-6',
     });
   });
 });

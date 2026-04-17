@@ -11,6 +11,9 @@ export interface Message {
   content: string;
   tool_calls?: ToolCall[];
   tool_results?: ToolResult[];
+  cache_control?: {
+    type: 'ephemeral';
+  };
   timestamp?: number;
 }
 
@@ -25,6 +28,17 @@ export interface ToolResult {
   output: string;
   success: boolean;
 }
+
+// --- Provider Protocol Abstraction ---
+
+export type ProviderType =
+  | 'anthropic'
+  | 'claude'
+  | 'openai'
+  | 'openai-compatible'
+  | 'codex';
+
+export type ProviderFamily = 'anthropic' | 'openai';
 
 // --- Tool System ---
 
@@ -51,11 +65,59 @@ export interface ToolContext {
 
 // --- LLM Provider ---
 
-export interface LLMResponse {
+export interface ChatRequest {
+  messages: Message[];
+  tools?: ToolDefinition[];
+  model?: string;
+  max_tokens?: number;
+  stream?: boolean;
+}
+
+export interface ChatResponse {
   content: string;
   tool_calls?: ToolCall[];
+  reasoning?: string;
   finish_reason: 'stop' | 'tool_use';
 }
+
+export interface StreamEventBase {
+  type: 'text_delta' | 'reasoning_delta' | 'tool_call_start' | 'tool_call_delta' | 'tool_call_end';
+}
+
+export interface TextDeltaStreamEvent extends StreamEventBase {
+  type: 'text_delta';
+  text: string;
+}
+
+export interface ReasoningDeltaStreamEvent extends StreamEventBase {
+  type: 'reasoning_delta';
+  text: string;
+}
+
+export interface ToolCallStartStreamEvent extends StreamEventBase {
+  type: 'tool_call_start';
+  tool_call: ToolCall;
+}
+
+export interface ToolCallDeltaStreamEvent extends StreamEventBase {
+  type: 'tool_call_delta';
+  tool_call_id: string;
+  partial_json: string;
+}
+
+export interface ToolCallEndStreamEvent extends StreamEventBase {
+  type: 'tool_call_end';
+  tool_call: ToolCall;
+}
+
+export type StreamEvent =
+  | TextDeltaStreamEvent
+  | ReasoningDeltaStreamEvent
+  | ToolCallStartStreamEvent
+  | ToolCallDeltaStreamEvent
+  | ToolCallEndStreamEvent;
+
+export type LLMResponse = ChatResponse;
 
 export interface ProviderConfig {
   api_key: string;
@@ -328,17 +390,41 @@ export interface CompressionConfig {
 // --- Config ---
 
 export interface AppConfig {
-  provider: 'anthropic' | 'openai';
+  provider: ProviderType;
   anthropic?: {
     api_key: string;
     base_url?: string;
     model?: string;
     max_tokens?: number;
+    timeout?: number;
+  };
+  claude?: {
+    api_key: string;
+    base_url?: string;
+    model?: string;
+    max_tokens?: number;
+    timeout?: number;
   };
   openai?: {
     api_key: string;
     base_url?: string;
     model?: string;
+    max_tokens?: number;
+    timeout?: number;
+  };
+  'openai-compatible'?: {
+    api_key: string;
+    base_url?: string;
+    model?: string;
+    max_tokens?: number;
+    timeout?: number;
+  };
+  codex?: {
+    api_key: string;
+    base_url?: string;
+    model?: string;
+    max_tokens?: number;
+    timeout?: number;
   };
   tools?: {
     run_shell?: {
