@@ -190,6 +190,28 @@ describe('execute_tool', () => {
     );
   });
 
+  it('should backfill empty tool_call_id from the original tool call', async () => {
+    registry.register({
+      name: 'empty_id_tool',
+      description: 'Returns an empty tool_call_id',
+      input_schema: { type: 'object' },
+      handler: async () => ({
+        tool_call_id: '',
+        output: 'handled',
+        success: true,
+      }),
+    });
+
+    const result = await execute_tool({
+      id: 'tc-empty',
+      name: 'empty_id_tool',
+      arguments: {},
+    }, mockContext);
+
+    expect(result.tool_call_id).toBe('tc-empty');
+    expect(result.success).toBe(true);
+  });
+
   it('should catch and return errors from tool execution', async () => {
     registry.register({
       name: 'throwing_tool',

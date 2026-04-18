@@ -22,6 +22,16 @@ export interface ToolExecutionObserver {
   onToolEnd?: (toolCall: ToolCall, result: ToolResult) => void;
 }
 
+function withToolCallId(result: ToolResult, toolCallId: string): ToolResult {
+  if (result.tool_call_id && result.tool_call_id.trim() !== '') {
+    return result;
+  }
+  return {
+    ...result,
+    tool_call_id: toolCallId,
+  };
+}
+
 /**
  * Resolve a relative or absolute path within the working directory sandbox.
  * Throws if the resolved path escapes the sandbox.
@@ -136,7 +146,8 @@ export async function execute_tool(
 
   // Execute
   try {
-    return await definition.handler(tool_call.arguments, context);
+    const result = await definition.handler(tool_call.arguments, context);
+    return withToolCallId(result, tool_call.id);
   } catch (e) {
     return {
       tool_call_id: tool_call.id,

@@ -256,6 +256,35 @@ describe('repl/runtime', () => {
     expect(events.every((event) => event.agentId === 'main')).toBe(true);
   });
 
+  it('converts unexpected turn-router errors into runtime error events instead of throwing', async () => {
+    const session = create_mock_session();
+    const provider = create_mock_provider();
+    setup_common_mocks(session, provider);
+
+    const events: RuntimeEvent[] = [];
+    const runtime: RuntimeSink = {
+      emit: (event) => {
+        events.push(event);
+      },
+    };
+
+    const agentRuntime = await create_agent_runtime({
+      working_dir: '/tmp',
+      provider: 'anthropic',
+      config: { api_key: 'test' },
+      runtime,
+      slash_handler: () => {
+        throw new Error('slash exploded');
+      },
+    });
+
+    await expect(agentRuntime.handle_user_input('hello')).resolves.toBeUndefined();
+
+    expect(events.some((event) => event.type === 'error' && event.message === 'Turn Error: slash exploded')).toBe(true);
+    expect(events.some((event) => event.type === 'turn_completed' && event.content === 'Error: slash exploded')).toBe(true);
+    expect(session.messages.some((m) => m.role === 'assistant' && m.content === 'Error: slash exploded')).toBe(true);
+  });
+
   it('rebuilds LLM context after compaction before streaming', async () => {
     const summaryMessage: Message = { role: 'system', content: '【历史摘要】压缩后的摘要' };
     const oldMessages = Array.from({ length: 23 }, (_, index) => ({

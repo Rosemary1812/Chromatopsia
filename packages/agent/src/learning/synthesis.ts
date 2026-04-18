@@ -40,10 +40,28 @@ ${existing_skill_info}
 3. 常见的陷阱有哪些？（至少 2 条）
 4. 如何验证操作是否成功？
 
-如果这些操作值得固化为可复用技能，请以 JSON 格式返回一个 Skill 对象，字段包括：
-id, name, trigger_condition, trigger_pattern（可选）, steps, pitfalls, verification, task_type, created_at, updated_at, call_count, success_count。
+请严格输出 JSON，对象格式如下：
+{
+  "should_learn": boolean,
+  "confidence": 0-1,
+  "reasoning": "简短判断理由",
+  "skill": {
+    "id": "skill-id",
+    "name": "技能名称",
+    "trigger_condition": "触发条件",
+    "trigger_pattern": "可选正则",
+    "steps": ["步骤1", "步骤2", "步骤3"],
+    "pitfalls": ["陷阱1", "陷阱2"],
+    "verification": "验证方式",
+    "task_type": "任务类型"
+  }
+}
 
-如果只是一次性操作不值得固化，返回空对象 {}。
+要求：
+1. 如果不值得沉淀，返回 {"should_learn": false, "confidence": x, "reasoning": "...", "skill": {}}。
+2. confidence 必须是 0 到 1 的数字。
+3. skill.steps 必须是可执行的工具步骤，不要写自然语言描述。
+4. 除了上面这些字段，不要输出额外字段。
 
 JSON 输出：`;
 
@@ -54,10 +72,13 @@ JSON 输出：`;
 export function summarize_task_buffer(buffer: TaskBufferEntry[]): string {
   if (buffer.length === 0) return '(empty)';
   return buffer
-    .map(
-      (e, i) =>
-        `[${i + 1}] ${e.task_type}: ${e.tool_calls.map((t) => t.name).join(' → ')}`,
-    )
+    .map((e, i) => {
+      const toolNames = e.tool_calls.map((t) => t.name).join(' → ') || '(no tools)';
+      const resultSummary = e.tool_results
+        .map((r) => `${r.success ? 'ok' : 'fail'}:${r.output.replace(/\s+/g, ' ').trim().slice(0, 80)}`)
+        .join(' | ');
+      return `[${i + 1}] ${e.task_type}: tools=${toolNames}; results=${resultSummary || '(no results)'}`;
+    })
     .join('\n');
 }
 
@@ -66,15 +87,29 @@ export function parse_synthesis_result(content: string): SynthesisResult {
     const jsonMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
     const jsonStr = jsonMatch ? jsonMatch[1].trim() : content.trim();
 
-    const obj = JSON.parse(jsonStr);
+    const obj = JSON.parse(jsonStr) as Record<string, unknown>;
     if (!obj || Object.keys(obj).length === 0) {
-      return { skill: {}, reasoning: content };
+      return { should_learn: false, skill: {}, reasoning: content };
     }
+
+    if ('should_learn' in obj) {
+      return {
+        should_learn: obj.should_learn === true,
+        confidence: typeof obj.confidence === 'number' ? obj.confidence : undefined,
+        reasoning: typeof obj.reasoning === 'string' ? obj.reasoning : undefined,
+        skill: isPlainObject(obj.skill) ? obj.skill as Partial<Skill> : {},
+      };
+    }
+
     return {
       skill: obj as Partial<Skill>,
-      reasoning: '',
+      should_learn: true,
     };
   } catch {
-    return { skill: {}, reasoning: content };
+    return { should_learn: false, skill: {}, reasoning: content };
   }
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

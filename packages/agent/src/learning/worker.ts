@@ -1,30 +1,45 @@
-import type { LLMProvider, Session, Skill, TurnEvent } from '../foundation/types.js';
-import { SessionHistory } from '../session/history.js';
+import type { LLMProvider, Session, Skill, TaskBufferEntry, ToolCall, ToolResult, TurnEvent } from '../foundation/types.js';
 import { SkillStore } from '../skills/store.js';
 import { SkillRegistry } from '../skills/registry.js';
 import { TurnEventStore } from './turn-event-store.js';
 import { synthesize_skill } from './synthesis.js';
 
 const DEFAULT_BATCH_TURNS = 20;
-const MIN_TOOL_TURNS = 2;
+const MIN_TOOL_EVENTS = 2;
 
 interface WorkerDeps {
   provider: LLMProvider;
   session: Session;
-  history: SessionHistory;
   skillStore: SkillStore;
   skillRegistry: SkillRegistry;
   eventStore: TurnEventStore;
 }
 
-function toTaskBuffer(events: TurnEvent[]) {
+interface CompletedTurnPayload {
+  tool_calls?: ToolCall[];
+  tool_results?: ToolResult[];
+}
+
+function toTaskBuffer(events: TurnEvent[]): TaskBufferEntry[] {
   return events.map((e) => ({
-    tool_calls: [],
-    tool_results: [],
+    tool_calls: normalizeToolCalls(e.tool_calls),
+    tool_results: normalizeToolResults(e.tool_results),
     task_type: e.task_type,
     session_id: e.session_id,
     timestamp: e.timestamp,
   }));
+}
+
+function normalizeToolCalls(toolCalls: TurnEvent['tool_calls']): ToolCall[] {
+  return Array.isArray(toolCalls) ? toolCalls : [];
+}
+
+function normalizeToolResults(toolResults: TurnEvent['tool_results']): ToolResult[] {
+  return Array.isArray(toolResults) ? toolResults : [];
+}
+
+function countToolEvents(buffer: TaskBufferEntry[]): number {
+  return buffer.filter((entry) => entry.tool_calls.length > 0 || entry.tool_results.length > 0).length;
 }
 
 function isValidSkillDraft(skill: Partial<Skill>): skill is Skill {
@@ -52,7 +67,6 @@ function normalizeDraft(skill: Skill): Skill {
 export class LearningWorker {
   private provider: LLMProvider;
   private session: Session;
-  private history: SessionHistory;
   private skillStore: SkillStore;
   private skillRegistry: SkillRegistry;
   private eventStore: TurnEventStore;
@@ -67,7 +81,6 @@ export class LearningWorker {
   ) {
     this.provider = deps.provider;
     this.session = deps.session;
-    this.history = deps.history;
     this.skillStore = deps.skillStore;
     this.skillRegistry = deps.skillRegistry;
     this.eventStore = deps.eventStore;
@@ -75,13 +88,19 @@ export class LearningWorker {
     this.minConfidence = minConfidence;
   }
 
-  async onTurnCompleted(taskType: string, userInput: string): Promise<{ triggered: boolean; draftName?: string }> {
+  async onTurnCompleted(
+    taskType: string,
+    userInput: string,
+    payload: CompletedTurnPayload = {},
+  ): Promise<{ triggered: boolean; draftName?: string }> {
     const event: TurnEvent = {
       id: `evt-${this.session.id}-${Date.now().toString(36)}`,
       session_id: this.session.id,
       timestamp: Date.now(),
       task_type: taskType,
       user_input: userInput,
+      tool_calls: normalizeToolCalls(payload.tool_calls),
+      tool_results: normalizeToolResults(payload.tool_results),
     };
     await this.eventStore.append(event);
 
@@ -96,7 +115,9 @@ export class LearningWorker {
     this.runningSessions.add(this.session.id);
     try {
       const result = await this.runLearningJob();
-      await this.eventStore.resetSessionTurns(this.session.id);
+      if (result.triggered) {
+        await this.eventStore.resetSessionTurns(this.session.id);
+      }
       return result;
     } finally {
       this.runningSessions.delete(this.session.id);
@@ -109,13 +130,12 @@ export class LearningWorker {
       return { triggered: false };
     }
 
-    const recentMessages = await this.history.load_session(this.session.id);
-    const toolTurns = recentMessages.filter((m) => m.role === 'tool').length;
-    if (toolTurns < MIN_TOOL_TURNS) {
+    const buffer = toTaskBuffer(recentEvents);
+    const toolEvents = countToolEvents(buffer);
+    if (toolEvents < MIN_TOOL_EVENTS) {
       return { triggered: false };
     }
 
-    const buffer = toTaskBuffer(recentEvents);
     const lastTaskType = recentEvents[recentEvents.length - 1]?.task_type ?? 'general';
     const synthesis = await synthesize_skill(
       {
@@ -126,7 +146,11 @@ export class LearningWorker {
       this.skillRegistry,
     );
 
-    if (!this.passesConfidenceGate(synthesis.reasoning)) {
+    if (!synthesis.should_learn) {
+      return { triggered: false };
+    }
+
+    if (!this.passesConfidenceGate(synthesis.confidence)) {
       return { triggered: false };
     }
 
@@ -142,14 +166,11 @@ export class LearningWorker {
     return { triggered: true, draftName: draft.name };
   }
 
-  private passesConfidenceGate(reasoning: string): boolean {
+  private passesConfidenceGate(confidence?: number): boolean {
     if (this.minConfidence <= 0) return true;
-    if (!reasoning) return true;
-    const m = reasoning.match(/confidence\s*[:=]\s*(0(?:\.\d+)?|1(?:\.0+)?)/i);
-    if (!m) return true;
-    const score = Number(m[1]);
-    if (!Number.isFinite(score)) return true;
-    return score >= this.minConfidence;
+    if (confidence === undefined) return true;
+    if (!Number.isFinite(confidence)) return true;
+    return confidence >= this.minConfidence;
   }
 }
 

@@ -28,21 +28,27 @@ describe('learning/synthesis', () => {
 
   it('parse_synthesis_result parses valid JSON skill object', () => {
     const json = JSON.stringify({
-      id: 'skill-1',
-      name: 'Test Skill',
-      task_type: 'test',
-      steps: ['step1', 'step2'],
-      pitfalls: ['pitfall1'],
-      trigger_condition: 'test condition',
+      should_learn: true,
+      confidence: 0.91,
+      reasoning: 'repeated workflow',
+      skill: {
+        id: 'skill-1',
+        name: 'Test Skill',
+        task_type: 'test',
+        steps: ['step1', 'step2'],
+        pitfalls: ['pitfall1'],
+        trigger_condition: 'test condition',
+      },
     });
     const result = parse_synthesis_result(json);
     expect(result.skill).toBeDefined();
     expect((result.skill as { name?: string }).name).toBe('Test Skill');
-    expect(result.reasoning).toBe('');
+    expect(result.should_learn).toBe(true);
+    expect(result.confidence).toBe(0.91);
   });
 
   it('parse_synthesis_result extracts JSON from markdown code block', () => {
-    const content = 'Some text\n```json\n{"id":"s1","name":"S"}\n```\nMore text';
+    const content = 'Some text\n```json\n{"should_learn":true,"skill":{"id":"s1","name":"S"}}\n```\nMore text';
     const result = parse_synthesis_result(content);
     expect((result.skill as { name?: string }).name).toBe('S');
   });
@@ -50,19 +56,27 @@ describe('learning/synthesis', () => {
   it('parse_synthesis_result returns empty skill on invalid JSON', () => {
     const result = parse_synthesis_result('not json at all');
     expect(result.skill).toEqual({});
+    expect(result.should_learn).toBe(false);
     expect(result.reasoning).toBe('not json at all');
   });
 
   it('parse_synthesis_result returns empty skill for empty object', () => {
     const result = parse_synthesis_result('{}');
     expect(result.skill).toEqual({});
+    expect(result.should_learn).toBe(false);
+  });
+
+  it('parse_synthesis_result remains backward compatible with direct skill JSON', () => {
+    const result = parse_synthesis_result('{"id":"legacy","name":"Legacy Skill","task_type":"git","steps":["a"],"pitfalls":["b"],"trigger_condition":"x"}');
+    expect(result.should_learn).toBe(true);
+    expect((result.skill as { id?: string }).id).toBe('legacy');
   });
 
   it('synthesize_skill uses learning input and provider output', async () => {
     const provider: LLMProvider = {
       name: 'mock',
       chat: vi.fn(async () => ({
-        content: '{"id":"draft-1","name":"Draft 1","task_type":"git","steps":["a","b","c"],"pitfalls":["x","y"],"trigger_condition":"git work"}',
+        content: '{"should_learn":true,"confidence":0.88,"skill":{"id":"draft-1","name":"Draft 1","task_type":"git","steps":["a","b","c"],"pitfalls":["x","y"],"trigger_condition":"git work"}}',
         finish_reason: 'stop',
       })),
       chat_stream: vi.fn(),
@@ -79,6 +93,8 @@ describe('learning/synthesis', () => {
     );
 
     expect(provider.chat).toHaveBeenCalledTimes(1);
+    expect(result.should_learn).toBe(true);
+    expect(result.confidence).toBe(0.88);
     expect((result.skill as { id?: string }).id).toBe('draft-1');
   });
 });

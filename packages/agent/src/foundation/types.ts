@@ -348,8 +348,10 @@ export interface TaskBufferEntry {
 }
 
 export interface SynthesisResult {
+  should_learn: boolean;
+  confidence?: number;
   skill: Partial<Skill>;
-  reasoning: string;
+  reasoning?: string;
 }
 
 // --- REPL Context ---
@@ -464,6 +466,8 @@ export interface TurnEvent {
   timestamp: number;
   task_type: string;
   user_input: string;
+  tool_calls?: ToolCall[];
+  tool_results?: ToolResult[];
 }
 
 // --- Agent Output Events (CLI/TUI implements these) ---

@@ -174,9 +174,13 @@ describe('types', () => {
 
   it('SynthesisResult should hold partial Skill', () => {
     const result: SynthesisResult = {
+      should_learn: true,
+      confidence: 0.9,
       skill: { name: 'New Skill', task_type: 'test' },
       reasoning: 'LLM reasoning here',
     };
+    expect(result.should_learn).toBe(true);
+    expect(result.confidence).toBe(0.9);
     expect(result.skill.name).toBe('New Skill');
     expect(result.reasoning).toBeTruthy();
   });
@@ -198,8 +202,12 @@ describe('types', () => {
       timestamp: Date.now(),
       task_type: 'refactor',
       user_input: 'refactor parser',
+      tool_calls: [{ id: 'tc1', name: 'Read', arguments: { file_path: 'parser.ts' } }],
+      tool_results: [{ tool_call_id: 'tc1', output: 'ok', success: true }],
     };
     expect(evt.session_id).toBe('s1');
     expect(evt.task_type).toBe('refactor');
+    expect(evt.tool_calls).toHaveLength(1);
+    expect(evt.tool_results).toHaveLength(1);
   });
 });
