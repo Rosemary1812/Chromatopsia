@@ -1,20 +1,49 @@
 #!/usr/bin/env node
 
 import { render } from 'ink';
-import { create_agent_runtime, load_config, type RuntimeSink } from '@chromatopsia/agent';
+import {
+  create_agent_runtime,
+  load_config,
+  resolveConfigPath,
+  type RuntimeSink,
+} from '@chromatopsia/agent';
+import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 import { ApprovalController } from './approval-controller.js';
 import { App } from './app.js';
 import { TuiStore } from './store.js';
 import { resolveThemeMode } from './types.js';
 
-async function main() {
-  const configPath = resolve(import.meta.dirname, '../../config.yaml');
-  const repoRoot = resolve(import.meta.dirname, '../../..');
-  const config = await load_config(configPath);
+export interface RunTuiOptions {
+  workingDir?: string;
+  configPath?: string;
+  debug?: boolean;
+  exit?: () => void;
+}
 
-  const anthropicConfig = config.anthropic;
-  const openaiConfig = config.openai;
+function resolveProviderView(config: Awaited<ReturnType<typeof load_config>>) {
+  const providerConfig = config[config.provider];
+  return {
+    api_key: providerConfig?.api_key ?? '',
+    base_url: providerConfig?.base_url,
+    model: providerConfig?.model,
+    max_tokens: providerConfig?.max_tokens,
+  };
+}
+
+export async function runTui(options: RunTuiOptions = {}): Promise<void> {
+  const workingDir = resolve(options.workingDir ?? process.cwd());
+  const resolvedConfig = resolveConfigPath({
+    workingDir,
+    explicitPath: options.configPath,
+  });
+
+  if (!resolvedConfig.path) {
+    throw new Error('Config file not found. Run `chroma` in an interactive terminal to complete onboarding.');
+  }
+
+  const config = await load_config(resolvedConfig.path);
+  const providerConfig = resolveProviderView(config);
   const approvalController = new ApprovalController();
 
   let store: TuiStore;
@@ -29,26 +58,13 @@ async function main() {
   };
 
   const runtime = await create_agent_runtime({
-    working_dir: repoRoot,
-    config_path: configPath,
+    working_dir: workingDir,
+    config_path: resolvedConfig.path,
     provider: config.provider,
-    config: {
-      api_key: config.provider === 'anthropic'
-        ? (anthropicConfig?.api_key ?? '')
-        : (openaiConfig?.api_key ?? ''),
-      model: config.provider === 'anthropic'
-        ? anthropicConfig?.model
-        : openaiConfig?.model,
-      max_tokens: config.provider === 'anthropic'
-        ? anthropicConfig?.max_tokens
-        : undefined,
-      base_url: config.provider === 'anthropic'
-        ? anthropicConfig?.base_url
-        : openaiConfig?.base_url,
-    },
+    config: providerConfig,
     app_config: config,
     runtime: runtimeSink,
-    logLevel: process.env.DEBUG ? 'debug' : 'error',
+    logLevel: options.debug || process.env.DEBUG ? 'debug' : 'error',
     agentId: 'main',
     agentRole: 'main',
   });
@@ -60,9 +76,9 @@ async function main() {
     clearConversation: () => {
       runtime.clear_conversation();
     },
-    exit: () => {
+    exit: options.exit ?? (() => {
       process.exit(0);
-    },
+    }),
   });
 
   const startupSkillMessage = runtime.get_skill_load_message();
@@ -76,22 +92,30 @@ async function main() {
     });
   }
 
-  const model = config.provider === 'anthropic'
-    ? anthropicConfig?.model ?? 'default'
-    : openaiConfig?.model ?? 'default';
-
   render(
     <App
       store={store}
       runtime={runtime}
       approvalController={approvalController}
-      model={model}
-      cwd={repoRoot}
+      model={providerConfig.model ?? 'default'}
+      cwd={workingDir}
     />,
   );
 }
 
-main().catch((err) => {
-  console.error('Fatal error:', err);
-  process.exit(1);
-});
+async function main() {
+  await runTui({
+    workingDir: resolve(import.meta.dirname, '../../..'),
+    configPath: resolve(import.meta.dirname, '../../config.yaml'),
+  });
+}
+
+const entryPath = process.argv[1] ? resolve(process.argv[1]) : null;
+const modulePath = resolve(fileURLToPath(import.meta.url));
+
+if (entryPath === modulePath) {
+  main().catch((err) => {
+    console.error('Fatal error:', err);
+    process.exit(1);
+  });
+}

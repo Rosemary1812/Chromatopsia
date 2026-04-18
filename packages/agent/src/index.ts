@@ -23,6 +23,7 @@ export { decideMemoryWrite, buildMemoryDecisionPrompt } from './memory/decider.j
 export { TurnEventStore } from './learning/turn-event-store.js';
 export { LearningWorker } from './learning/worker.js';
 export { load_config } from './config/loader.js';
+export { getProjectConfigPath, getUserConfigDir, getUserConfigPath, resolveConfigPath } from './config/paths.js';
 export { resolveProjectRoot, resolveStoragePaths } from './storage/paths.js';
 
 // Additional re-exports for convenience (counted separately in verification)

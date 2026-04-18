@@ -62,6 +62,9 @@ export function resolveStoragePaths(options: {
   const logsDir = path.join(root, 'logs');
   const sessionsDir = path.join(root, 'sessions');
   const memoryDir = path.join(root, 'memory');
+  const packageRoot = process.env.CHROMATOPSIA_PACKAGE_ROOT
+    ? path.resolve(process.env.CHROMATOPSIA_PACKAGE_ROOT)
+    : null;
 
   return {
     projectRoot,
@@ -81,6 +84,12 @@ export function resolveStoragePaths(options: {
     builtinSkillsRoots: [
       path.join(projectRoot, 'skills', 'builtin'),
       path.join(projectRoot, 'packages', 'agent', 'skills', 'builtin'),
+      ...(packageRoot
+        ? [
+            path.join(packageRoot, 'dist', 'agent', 'skills', 'builtin'),
+            path.join(packageRoot, 'packages', 'agent', 'skills', 'builtin'),
+          ]
+        : []),
     ],
   };
 }

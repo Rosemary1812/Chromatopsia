@@ -90,6 +90,9 @@ importers:
       '@chromatopsia/agent':
         specifier: workspace:*
         version: link:../agent
+      '@chromatopsia/tui':
+        specifier: workspace:*
+        version: link:../agent/tui
       dotenv:
         specifier: ^16.0.3
         version: 16.6.1

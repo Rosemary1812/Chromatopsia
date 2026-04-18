@@ -93,3 +93,8 @@ TOFIX-skill-loading.md
 
 # Personal todo lists
 TODO-loop-refactor.md
+bin/
+*.tgz
+docs/
+scripts/
+tmp_codex_patch_test.txt

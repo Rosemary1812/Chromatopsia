@@ -1,21 +1,49 @@
 {
   "name": "chromatopsia",
   "version": "0.1.0",
-  "private": true,
   "description": "Chromatopsia - Agent development toolkit with terminal REPL",
   "bin": {
-    "chromatopsia": "./packages/cli/bin/chromatopsia.mjs"
+    "chroma": "./bin/chroma.mjs",
+    "chromatopsia": "./bin/chroma.mjs"
+  },
+  "files": [
+    "bin",
+    "dist",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "build:agent": "pnpm --filter @chromatopsia/agent build",
     "build:cli": "pnpm --filter @chromatopsia/cli build",
     "build:tui": "pnpm --filter @chromatopsia/tui build",
-    "build": "pnpm build:agent && pnpm build:cli",
+    "build": "pnpm build:agent && pnpm build:tui && pnpm build:cli",
+    "build:release": "pnpm build && node ./scripts/build-release.mjs",
     "dev:agent": "pnpm --filter @chromatopsia/agent dev",
     "dev:cli": "pnpm --filter @chromatopsia/cli dev",
     "dev:tui": "pnpm --filter @chromatopsia/tui dev",
+    "pack:check": "npm pack",
+    "prepack": "pnpm build:release",
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck"
   },
-  "packageManager": "pnpm@9.15.0"
+  "packageManager": "pnpm@9.15.0",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "dotenv": "^16.0.3",
+    "exponential-backoff": "^3.1.1",
+    "flock": "^0.1.0",
+    "highlight.js": "^11.10.0",
+    "ink": "^5.1.0",
+    "marked": "^15.0.7",
+    "openai": "^4.77.0",
+    "react": "^18.3.1",
+    "turndown": "^7.2.0",
+    "yaml": "^2.6.1",
+    "zod": "^3.23.8"
+  }
 }

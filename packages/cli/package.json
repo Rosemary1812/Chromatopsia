@@ -6,6 +6,7 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
+    "chroma": "./bin/chromatopsia.mjs",
     "chromatopsia": "./bin/chromatopsia.mjs"
   },
   "scripts": {
@@ -16,6 +17,7 @@
   },
   "dependencies": {
     "@chromatopsia/agent": "workspace:*",
+    "@chromatopsia/tui": "workspace:*",
     "dotenv": "^16.0.3"
   },
   "devDependencies": {
