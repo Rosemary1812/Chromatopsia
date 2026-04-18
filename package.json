@@ -2,6 +2,24 @@
   "name": "chromatopsia",
   "version": "0.1.0",
   "description": "Chromatopsia - Agent development toolkit with terminal REPL",
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Rosemary1812/Chromatopsia.git"
+  },
+  "homepage": "https://github.com/Rosemary1812/Chromatopsia#readme",
+  "bugs": {
+    "url": "https://github.com/Rosemary1812/Chromatopsia/issues"
+  },
+  "keywords": [
+    "agent",
+    "cli",
+    "coding-agent",
+    "terminal",
+    "tui",
+    "llm"
+  ],
   "bin": {
     "chroma": "./bin/chroma.mjs",
     "chromatopsia": "./bin/chroma.mjs"
