@@ -9,6 +9,7 @@ import { MemoryIndexStore } from '../memory/index-store.js';
 import { MemoryTopicStore } from '../memory/topic-store.js';
 import { TurnEventStore } from '../learning/turn-event-store.js';
 import { LearningWorker } from '../learning/worker.js';
+import { TraceLogger } from './trace-logger.js';
 import { register_all_tools } from '../foundation/tools/index.js';
 import { createRuntimeEvent } from './runtime.js';
 import type { RuntimeEventInput } from './runtime.js';
@@ -67,7 +68,63 @@ export async function create_agent_runtime_impl(
     configPath: config_path,
   });
   const session_manager = new SessionManager(storagePaths.sessionsDir, provider);
-  const session = session_manager.create_session(working_dir);
+  
+  // P0-1: 会话恢复 — 尝试恢复现有会话而不是总是创建新的
+  let session;
+  let sessionRecovered = false;
+  
+  try {
+    const recoveryResult = await session_manager.recover_or_prompt(working_dir);
+    
+    if ('recovered' in recoveryResult && typeof recoveryResult.recovered === 'boolean') {
+      // Case 1: 返回了一个 session（无会话时创建新，或单会话时恢复）
+      session = recoveryResult.session;
+      sessionRecovered = recoveryResult.recovered;
+      if (isDebug) {
+        emitRuntime({
+          type: 'debug',
+          message: sessionRecovered 
+            ? `Session recovered: ${session.id}` 
+            : `New session created: ${session.id}`
+        });
+      }
+    } else if ('candidates' in recoveryResult) {
+      // Case 2: 多个候选会话
+      // 暂时创建新会话，CLI 层后续可支持选择
+      session = session_manager.create_session(working_dir);
+      sessionRecovered = false;
+      emitRuntime({
+        type: 'notification',
+        message: `Multiple session candidates found for ${working_dir}. Starting new session. Use 'session list' to view.`
+      });
+    } else {
+      // Fallback：直接创建
+      session = session_manager.create_session(working_dir);
+      sessionRecovered = false;
+    }
+  } catch (err) {
+    // 恢复失败，降级到新会话
+    session = session_manager.create_session(working_dir);
+    sessionRecovered = false;
+    if (isDebug) {
+      emitRuntime({
+        type: 'debug',
+        message: `Session recovery failed, created new session: ${session.id}`
+      });
+    }
+  }
+
+  // P0-4: 安全审计日志 — 初始化 ApprovalLogger
+  const approval_hook = new ApprovalHook({
+    auto_approve_safe: loadedAppConfig?.approval?.auto_approve_safe ?? true,
+    timeout_ms: (loadedAppConfig?.approval?.timeout_seconds ?? 300) * 1000,
+    logsDir: storagePaths.logsDir,  // 传入 logsDir
+  });
+
+  // P0-2: Trace 持久化 — 初始化 TraceLogger
+  const trace_logger = new TraceLogger(storagePaths.logsDir, session.id);
+  await trace_logger.init();
+
   const skill_reg = new SkillRegistry();
   const skill_store = new SkillStore({
     indexPath: storagePaths.skillsIndexPath,
@@ -75,10 +132,6 @@ export async function create_agent_runtime_impl(
     builtinSkillsRoots: storagePaths.builtinSkillsRoots,
     enableBuiltin: true,
     cwd: storagePaths.projectRoot,
-  });
-  const approval_hook = new ApprovalHook({
-    auto_approve_safe: loadedAppConfig?.approval?.auto_approve_safe ?? true,
-    timeout_ms: (loadedAppConfig?.approval?.timeout_seconds ?? 300) * 1000,
   });
   const memoryIndexStore = new MemoryIndexStore(storagePaths.memoryDir);
   const memoryTopicStore = new MemoryTopicStore(storagePaths.memoryDir);
@@ -150,5 +203,8 @@ export async function create_agent_runtime_impl(
     list_slash_commands: () => buildRuntimeSkillCommands(skill_store),
     list_draft_skills: () => listRuntimeDrafts(skill_store),
     get_skill_load_message: () => build_skill_load_message(skill_store.getManifest()),
+    sessionId: session.id,  // 新增
+    sessionRecovered,  // 新增
+    traceLogger: trace_logger,  // 新增：P0-2
   };
 }

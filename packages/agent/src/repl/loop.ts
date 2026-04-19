@@ -47,6 +47,25 @@ export async function run_repl(options: ReplOptions): Promise<RunReplResult> {
     agentRole,
   });
 
+  // P0-1: 显示会话恢复状态
+  if (agentRuntime.sessionRecovered) {
+    runtime.emit(createRuntimeEvent({
+      type: 'notification',
+      message: `✓ Session recovered: ${agentRuntime.sessionId}`
+    }, {
+      agentId: agentId ?? 'main',
+      agentRole: agentRole ?? 'main',
+    }));
+  } else {
+    runtime.emit(createRuntimeEvent({
+      type: 'notification',
+      message: `✓ New session: ${agentRuntime.sessionId}`
+    }, {
+      agentId: agentId ?? 'main',
+      agentRole: agentRole ?? 'main',
+    }));
+  }
+
   let rl: readline.Interface | null = customRl ?? null;
 
   function make_rl_promise(): Promise<string> {

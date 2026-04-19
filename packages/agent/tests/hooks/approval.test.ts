@@ -1,6 +1,10 @@
 // T-20: hooks/approval.ts ApprovalHook tests
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ApprovalHook } from '../../src/hooks/approval.js';
+import { ApprovalLogger } from '../../src/hooks/approval-logger.js';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import { registry } from '../../src/foundation/tools/registry.js';
 import type { ToolDefinition } from '../../src/foundation/types.js';
 
@@ -260,6 +264,50 @@ describe('ApprovalHook', () => {
 
       const response = await decisionPromise;
       expect(response.decision).toBe('approve');
+    });
+  });
+
+
+
+  describe('audit logging', () => {
+    it('should preserve original metadata when a pending request is approved', async () => {
+      vi.useRealTimers();
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'approval-hook-audit-'));
+      try {
+        const loggingHook = new ApprovalHook({ logsDir: tempDir });
+        const request = loggingHook.request_approval(
+          'run_shell',
+          { command: 'git push' },
+          'dangerous command',
+          'session-123'
+        );
+
+        expect(request).not.toBeNull();
+        loggingHook.submit_decision({
+          request_id: request!.id,
+          decision: 'approve',
+        });
+
+        await new Promise(resolve => setTimeout(resolve, 20));
+
+        const logger = new ApprovalLogger(tempDir);
+        await logger.init();
+        const stats = await logger.getApprovalStats();
+        const logs = await logger.getAllLogs();
+        const finalLog = logs[logs.length - 1];
+
+        expect(stats.total_requests).toBe(1);
+        expect(stats.pending_requests).toBe(0);
+        expect(stats.approved).toBe(1);
+        expect(stats.rejected).toBe(0);
+        expect(stats.by_tool['run_shell'].total).toBe(1);
+        expect(finalLog.tool_name).toBe('run_shell');
+        expect(finalLog.danger_level).toBe('warning');
+        expect(finalLog.status).toBe('approved');
+        expect(finalLog.session_id).toBe('session-123');
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
     });
   });
 

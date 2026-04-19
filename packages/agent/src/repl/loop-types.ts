@@ -9,6 +9,7 @@ import type {
   Session,
 } from '../foundation/types.js';
 import type { SkillRegistry } from '../skills/registry.js';
+import type { TraceLogger } from './trace-logger.js';
 
 export interface ReplOptions {
   working_dir: string;
@@ -61,4 +62,7 @@ export interface AgentRuntimeResult {
   list_slash_commands: () => Array<{ input: string; description: string }>;
   list_draft_skills: () => Array<{ id: string; name: string; task_type: string }>;
   get_skill_load_message: () => string | null;
+  sessionId: string;  // 新增：当前 session ID
+  sessionRecovered: boolean;  // 新增：是否从已有会话恢复
+  traceLogger: TraceLogger;  // 新增：trace logger 实例
 }

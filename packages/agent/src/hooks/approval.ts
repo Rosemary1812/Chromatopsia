@@ -3,6 +3,8 @@ import { randomUUID } from 'crypto';
 import type { ApprovalRequest, ApprovalResponse } from '../foundation/types.js';
 import { registry } from '../foundation/tools/registry.js';
 import { is_dangerous_command, is_sensitive_path } from '../foundation/tools/denied-patterns.js';
+import { ApprovalLogger } from './approval-logger.js';
+import type { ApprovalLogStatus } from './approval-logger.js';
 
 // ============================================================
 // ApprovalHook
@@ -49,9 +51,19 @@ const APPROVAL_RUN_SHELL_PATTERNS: RegExp[] = [
 const SHELL_CONTROL_OPERATOR_PATTERN = /[|;&><`]/;
 const SHELL_EXPANSION_PATTERN = /\$\(|\${|\$[A-Za-z_]/;
 
+interface ApprovalAuditMetadata {
+  request_id: string;
+  tool_name: string;
+  danger_level: 'safe' | 'warning' | 'dangerous';
+  command?: string;
+  session_id: string;
+  requested_at: number;
+}
+
 export interface ApprovalHookOptions {
   auto_approve_safe?: boolean;
   timeout_ms?: number;
+  logsDir?: string;  // 新增：用于初始化 ApprovalLogger
 }
 
 export class ApprovalHook {
@@ -62,10 +74,19 @@ export class ApprovalHook {
   }>();
   private readonly autoApproveSafe: boolean;
   private readonly defaultTimeoutMs: number;
+  private logger?: ApprovalLogger;  // 新增：日志记录器
+  private auditMetadata = new Map<string, ApprovalAuditMetadata>();
 
   constructor(options: ApprovalHookOptions = {}) {
     this.autoApproveSafe = options.auto_approve_safe ?? true;
     this.defaultTimeoutMs = options.timeout_ms ?? DEFAULT_TIMEOUT_MS;
+    if (options.logsDir) {
+      this.logger = new ApprovalLogger(options.logsDir);
+      // 异步初始化，不阻塞构造
+      this.logger.init().catch(err => {
+        console.error('[ApprovalLogger] Failed to init:', err);
+      });
+    }
   }
 
   /**
@@ -74,42 +95,170 @@ export class ApprovalHook {
    * @param tool_name - Name of the tool to execute
    * @param args - Tool arguments
    * @param context - Human-readable context description
+   * @param sessionId - Session ID for audit trail
    * @returns ApprovalRequest if approval is needed, null if auto-approved
    */
   request_approval(
     tool_name: string,
     args: Record<string, unknown>,
-    context: string
+    context: string,
+    sessionId?: string
   ): ApprovalRequest | null {
     const toolDef = registry.get(tool_name);
 
     // Unknown tools default to requiring approval
     if (!toolDef) {
-      return this.createRequest(tool_name, args, context);
+      const request = this.createRequest(tool_name, args, context);
+      this.logRequest(request, 'warning', args, sessionId);
+      return request;
     }
 
     if (tool_name === 'run_shell') {
       const command = typeof args['command'] === 'string' ? args['command'] : '';
       if (this.shouldApproveRunShell(command)) {
-        return this.createRequest(tool_name, args, context);
+        const request = this.createRequest(tool_name, args, context);
+        this.logRequest(request, toolDef.danger_level ?? 'warning', args, sessionId);
+        return request;
       }
-      return this.autoApproveSafe ? null : this.createRequest(tool_name, args, context);
+      if (!this.autoApproveSafe) {
+        const request = this.createRequest(tool_name, args, context);
+        this.logRequest(request, toolDef.danger_level ?? 'warning', args, sessionId);
+        return request;
+      }
+      // Auto-approve safe commands
+      this.logApproval(tool_name, 'auto_approved', true, 'auto_approved_safe', args, sessionId);
+      return null;
     }
 
     // Dangerous tools always require approval
     if (toolDef.danger_level === 'dangerous') {
-      return this.createRequest(tool_name, args, context);
+      const request = this.createRequest(tool_name, args, context);
+      this.logRequest(request, 'dangerous', args, sessionId);
+      return request;
     }
 
     // Warning tools require approval in dangerous scenarios
     if (toolDef.danger_level === 'warning') {
       if (this.isWarningScenario(tool_name, args)) {
-        return this.createRequest(tool_name, args, context);
+        const request = this.createRequest(tool_name, args, context);
+        this.logRequest(request, 'warning', args, sessionId);
+        return request;
       }
     }
 
     // Safe tools are auto-approved
-    return this.autoApproveSafe ? null : this.createRequest(tool_name, args, context);
+    if (this.autoApproveSafe) {
+      this.logApproval(tool_name, 'auto_approved', true, 'auto_approved_safe', args, sessionId);
+      return null;
+    }
+
+    const request = this.createRequest(tool_name, args, context);
+    this.logRequest(request, toolDef.danger_level ?? 'safe', args, sessionId);
+    return request;
+  }
+
+  /**
+   * 记录需要批准的请求（后台异步）
+   */
+  private logRequest(
+    request: ApprovalRequest,
+    dangerLevel: 'safe' | 'warning' | 'dangerous',
+    args: Record<string, unknown>,
+    sessionId?: string
+  ): void {
+    const metadata: ApprovalAuditMetadata = {
+      request_id: request.id,
+      tool_name: request.tool_name,
+      danger_level: dangerLevel,
+      command: request.tool_name === 'run_shell' ? (args['command'] as string | undefined) : undefined,
+      session_id: sessionId ?? 'unknown',
+      requested_at: request.timestamp,
+    };
+    this.auditMetadata.set(request.id, metadata);
+
+    if (!this.logger) return;
+
+    // 后台异步记录，不阻塞主流程
+    this.logger.logApprovalRequest({
+      timestamp: Date.now(),
+      request_id: request.id,
+      tool_name: request.tool_name,
+      danger_level: dangerLevel,
+      status: 'pending',
+      command: metadata.command,
+      decision_reason: 'pending_user_approval',
+      session_id: metadata.session_id,
+    }).catch(err => {
+      console.error('[ApprovalLogger] Failed to log request:', err);
+    });
+  }
+
+  /**
+   * 记录自动批准（后台异步）
+   */
+  private logApproval(
+    toolName: string,
+    status: 'auto_approved' | 'approved' | 'edited' | 'rejected' | 'cancelled' | 'timed_out',
+    approved: boolean,
+    reason: string,
+    args: Record<string, unknown>,
+    sessionId?: string
+  ): void {
+    if (!this.logger) return;
+
+    // 获取 tool 的 danger level
+    const toolDef = registry.get(toolName);
+    const dangerLevel = toolDef?.danger_level ?? 'safe';
+
+    // 后台异步记录
+    this.logger.logApprovalRequest({
+      timestamp: Date.now(),
+      request_id: `auto-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      tool_name: toolName,
+      danger_level: dangerLevel,
+      status,
+      command: toolName === 'run_shell' ? (args['command'] as string | undefined) : undefined,
+      approved,
+      decision_reason: reason,
+      session_id: sessionId ?? 'unknown',
+    }).catch(err => {
+      console.error('[ApprovalLogger] Failed to log approval:', err);
+    });
+  }
+
+  private logResolvedDecision(
+    requestId: string,
+    status: ApprovalLogStatus,
+    decisionReason: string,
+    sessionId?: string,
+    modifiedArgs?: Record<string, unknown>
+  ): void {
+    const metadata = this.auditMetadata.get(requestId);
+    if (!this.logger || !metadata) {
+      return;
+    }
+
+    const approved = status === 'approved' || status === 'edited' || status === 'auto_approved';
+    const command = metadata.tool_name === 'run_shell'
+      ? (modifiedArgs?.['command'] as string | undefined) ?? metadata.command
+      : metadata.command;
+
+    this.logger.logApprovalRequest({
+      timestamp: Date.now(),
+      request_id: requestId,
+      tool_name: metadata.tool_name,
+      danger_level: metadata.danger_level,
+      status,
+      command,
+      approved,
+      decision_reason: decisionReason,
+      approval_wait_ms: Date.now() - metadata.requested_at,
+      session_id: sessionId ?? metadata.session_id,
+    }).catch(err => {
+      console.error('[ApprovalLogger] Failed to log decision:', err);
+    });
+
+    this.auditMetadata.delete(requestId);
   }
 
   private shouldApproveRunShell(command: string): boolean {
@@ -204,6 +353,7 @@ export class ApprovalHook {
     return new Promise<ApprovalResponse>((resolve, reject) => {
       const timeoutId = setTimeout(() => {
         this.pendingRequests.delete(request_id);
+        this.logResolvedDecision(request_id, 'timed_out', 'approval_timed_out');
         // Timeout -> auto reject
         resolve({
           request_id,
@@ -224,16 +374,30 @@ export class ApprovalHook {
    * Called by the UI when the user makes a decision.
    *
    * @param response - The approval response from the user
+   * @param sessionId - Session ID for audit trail
    */
-  submit_decision(response: ApprovalResponse): void {
+  submit_decision(response: ApprovalResponse, sessionId?: string): void {
     const pending = this.pendingRequests.get(response.request_id);
-    if (!pending) {
-      return;
+    if (pending) {
+      clearTimeout(pending.timeoutId);
+      this.pendingRequests.delete(response.request_id);
     }
 
-    clearTimeout(pending.timeoutId);
-    this.pendingRequests.delete(response.request_id);
-    pending.resolve(response);
+    const status = response.decision === 'approve'
+      ? 'approved'
+      : response.decision === 'edit'
+        ? 'edited'
+        : 'rejected';
+    const reason = response.decision === 'approve'
+      ? 'user_approved'
+      : response.decision === 'edit'
+        ? 'user_edited'
+        : 'user_rejected';
+    this.logResolvedDecision(response.request_id, status, reason, sessionId, response.modified_args);
+
+    if (pending) {
+      pending.resolve(response);
+    }
   }
 
   /**
@@ -246,6 +410,7 @@ export class ApprovalHook {
     if (pending) {
       clearTimeout(pending.timeoutId);
       this.pendingRequests.delete(request_id);
+      this.logResolvedDecision(request_id, 'cancelled', 'approval_cancelled');
       pending.reject(new Error('Approval request cancelled'));
     }
   }

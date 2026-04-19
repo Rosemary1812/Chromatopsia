@@ -32,6 +32,7 @@ export class AnthropicProvider implements LLMProvider {
   private client: Anthropic | null = null;
   private config: ProviderConfig | null = null;
   private model: string;
+  private turnNumber: number = 0;
 
   constructor(config: ProviderConfig) {
     this.init(config);
@@ -135,7 +136,17 @@ export class AnthropicProvider implements LLMProvider {
       throw new Error('AnthropicProvider not initialized');
     }
 
+    this.turnNumber++;
+
     const systemContent = this.buildSystemPrompt(messages);
+    
+    // P0-3: 激活缓存注解 — 在 system 块上标记缓存
+    const systemWithCache = systemContent?.map((block, idx) => ({
+      ...block,
+      // 在第一条 system 块上标记缓存（只需一次）
+      ...(idx === 0 ? { cache_control: { type: 'ephemeral' } } : {}),
+    }));
+
     const conversationMessages: Anthropic.MessageParam[] = [];
 
     for (const msg of messages) {
@@ -152,6 +163,13 @@ export class AnthropicProvider implements LLMProvider {
       } as Anthropic.MessageParam);
     }
 
+    // P0-3: 激活缓存注解 — 在最后一条消息上标记缓存
+    if (conversationMessages.length > 0) {
+      const lastIdx = conversationMessages.length - 1;
+      const lastMsg = conversationMessages[lastIdx] as any;
+      lastMsg.cache_control = { type: 'ephemeral' };
+    }
+
     const anthropicTools = tools ? this.toAnthropicTools(tools) : undefined;
     const maxTokens = this.config?.max_tokens ?? DEFAULT_MAX_TOKENS;
 
@@ -161,7 +179,7 @@ export class AnthropicProvider implements LLMProvider {
           this.client!.messages.create({
             model: this.model,
             max_tokens: maxTokens,
-            system: (systemContent || undefined) as any,
+            system: (systemWithCache || undefined) as any,
             messages: conversationMessages,
             tools: anthropicTools,
           }),
@@ -193,6 +211,15 @@ export class AnthropicProvider implements LLMProvider {
         }
       }
 
+      // P0-3: 缓存统计日志
+      const usage = response.usage as any;
+      if (usage?.cache_creation_input_tokens && usage.cache_creation_input_tokens > 0) {
+        console.debug(`[Cache] Created: ${usage.cache_creation_input_tokens} tokens cached`);
+      }
+      if (usage?.cache_read_input_tokens && usage.cache_read_input_tokens > 0) {
+        console.debug(`[Cache] Hit: read ${usage.cache_read_input_tokens} tokens from cache, saved ${Math.round(usage.cache_read_input_tokens * 0.9)} tokens (90% discount)`);
+      }
+
       return {
         content,
         reasoning: reasoning || undefined,
@@ -216,7 +243,17 @@ export class AnthropicProvider implements LLMProvider {
       throw new Error('AnthropicProvider not initialized');
     }
 
+    this.turnNumber++;
+
     const systemContent = this.buildSystemPrompt(messages);
+    
+    // P0-3: 激活缓存注解 — 在 system 块上标记缓存
+    const systemWithCache = systemContent?.map((block, idx) => ({
+      ...block,
+      // 在第一条 system 块上标记缓存（只需一次）
+      ...(idx === 0 ? { cache_control: { type: 'ephemeral' } } : {}),
+    }));
+
     const conversationMessages: Anthropic.MessageParam[] = [];
 
     for (const msg of messages) {
@@ -233,6 +270,13 @@ export class AnthropicProvider implements LLMProvider {
       } as Anthropic.MessageParam);
     }
 
+    // P0-3: 激活缓存注解 — 在最后一条消息上标记缓存
+    if (conversationMessages.length > 0) {
+      const lastIdx = conversationMessages.length - 1;
+      const lastMsg = conversationMessages[lastIdx] as any;
+      lastMsg.cache_control = { type: 'ephemeral' };
+    }
+
     const anthropicTools = tools ? this.toAnthropicTools(tools) : undefined;
     const maxTokens = this.config?.max_tokens ?? DEFAULT_MAX_TOKENS;
 
@@ -241,7 +285,7 @@ export class AnthropicProvider implements LLMProvider {
         async () => this.client!.messages.stream({
           model: this.model,
           max_tokens: maxTokens,
-          system: (systemContent || undefined) as any,
+          system: (systemWithCache || undefined) as any,
           messages: conversationMessages,
           tools: anthropicTools,
         }),
@@ -321,6 +365,16 @@ export class AnthropicProvider implements LLMProvider {
             }
           }
         }
+      }
+
+      // P0-3: 缓存统计日志（streaming）
+      const finalMessage = stream.finalMessage() as any;
+      const usage = finalMessage?.usage;
+      if (usage?.cache_creation_input_tokens && usage.cache_creation_input_tokens > 0) {
+        console.debug(`[Cache] Created: ${usage.cache_creation_input_tokens} tokens cached`);
+      }
+      if (usage?.cache_read_input_tokens && usage.cache_read_input_tokens > 0) {
+        console.debug(`[Cache] Hit: read ${usage.cache_read_input_tokens} tokens from cache, saved ${Math.round(usage.cache_read_input_tokens * 0.9)} tokens (90% discount)`);
       }
 
       // Note: the return value is what the for...of receives when the generator finishes

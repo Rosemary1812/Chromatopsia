@@ -43,8 +43,8 @@ describe('bash tool', () => {
       expect(run_shell_definition.name).toBe('run_shell');
     });
 
-    it('should be marked as dangerous', () => {
-      expect(run_shell_definition.danger_level).toBe('dangerous');
+    it('should be marked as warning', () => {
+      expect(run_shell_definition.danger_level).toBe('warning');
     });
 
     it('should have required command parameter', () => {

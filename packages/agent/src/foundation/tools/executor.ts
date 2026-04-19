@@ -177,7 +177,7 @@ export async function execute_tool_calls_parallel(
 
   for (const tc of tool_calls) {
     if (approvalHook) {
-      const request = approvalHook.request_approval(tc.name, tc.arguments, 'tool execution');
+      const request = approvalHook.request_approval(tc.name, tc.arguments, 'tool execution', context.session.id);
       if (request === null) {
         safe.push(tc);
       } else {

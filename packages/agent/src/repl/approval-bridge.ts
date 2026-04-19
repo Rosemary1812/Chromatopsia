@@ -25,6 +25,11 @@ export function createApprovalRequestHandler(
     const decision = runtime.requestApproval
       ? await runtime.requestApproval(request)
       : await approvalHook.wait_for_decision(request.id);
+
+    if (runtime.requestApproval) {
+      approvalHook.submit_decision(decision);
+    }
+
     emitRuntime({ type: 'approval_resolved', turnId, requestId: request.id, decision: decision.decision });
     return decision;
   };
