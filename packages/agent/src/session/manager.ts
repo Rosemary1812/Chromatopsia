@@ -23,6 +23,11 @@ import {
   compress_session,
   DEFAULT_COMPRESSION_CONFIG,
 } from './summarizer.js';
+import {
+  estimateContextTokens,
+  calculateContextFillRate,
+  getContextWindowSize,
+} from '../foundation/llm/token-counter.js';
 
 /**
  * Session 实现 — 实现 Session 接口
@@ -70,6 +75,44 @@ class SessionImpl implements Session {
 
   compact(): Promise<void> {
     return this.manager.truncate_history(this.id);
+  }
+
+  /**
+   * 获取当前 session 的 token 使用统计
+   * @param model - LLM 模型名称（用于确定 context window 大小）
+   * @returns 包含当前 tokens、阈值、剩余、百分比和警告标志的对象
+   */
+  getTokenStats(model: string): {
+    current: number;
+    max: number;
+    remaining: number;
+    percentage: number;
+    warn: boolean;
+  } {
+    const current = estimateContextTokens(this.messages);
+    const max = getContextWindowSize(model);
+    const remaining = max - current;
+    const percentage = Math.round((current / max) * 100);
+    const warn = percentage >= 80; // 80% 以上警告
+
+    return {
+      current,
+      max,
+      remaining,
+      percentage,
+      warn,
+    };
+  }
+
+  /**
+   * 判断是否应该压缩（基于上下文填充率）
+   * @param model - LLM 模型名称
+   * @param threshold - 填充率阈值（默认 0.8 = 80%）
+   * @returns true 表示应该压缩
+   */
+  should_compact_with_model(model: string, threshold: number = 0.8): boolean {
+    const fillRate = calculateContextFillRate(this.messages, model);
+    return fillRate > threshold;
   }
 }
 

@@ -348,6 +348,18 @@ export async function handle_normal_turn(
         await session.compact();
       }
 
+      // P1-6: 输出 token 使用统计
+      if (isDebug) {
+        const tokenStats = (session as any).getTokenStats?.(provider.get_model());
+        if (tokenStats) {
+          const warnStr = tokenStats.warn ? '⚠️' : '';
+          emitRuntime({
+            type: 'debug',
+            message: `[Token] ${tokenStats.current}/${tokenStats.max} (${tokenStats.percentage}%) ${warnStr}`.trim(),
+          });
+        }
+      }
+
       ctx = prepareTurnContext(session, taskType, skillRegistry, extraSystemMessages);
     } catch (err) {
       const formatted = formatLlmErrorMessage(err);
