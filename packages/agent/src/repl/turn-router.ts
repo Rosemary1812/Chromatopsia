@@ -5,6 +5,7 @@ import type {
   RuntimeSink,
   Session,
   Skill,
+  SkillDocument,
   SkillManifestEntry,
   ToolCall,
   ToolContext,
@@ -16,8 +17,6 @@ import type { SkillStore } from '../skills/store.js';
 import type { ApprovalHook } from '../hooks/approval.js';
 import type { MemoryIndexStore } from '../memory/index-store.js';
 import type { MemoryTopicStore } from '../memory/topic-store.js';
-import { execute_skill } from './executor.js';
-import { createApprovalRequestHandler } from './approval-bridge.js';
 import { handle_normal_turn } from './normal-turn.js';
 import { loadMemorySystemMessages, persistTurnMemory } from './turn-hooks.js';
 
@@ -47,43 +46,16 @@ export function build_skill_load_message(entries: SkillManifestEntry[]): string 
   return `Loaded ${entries.length} skills (${builtin} builtin, ${user} user, ${drafts} draft; ${enabled.length} active).`;
 }
 
-export function summarize_skill_results(
-  skill: Skill,
-  results: ToolResult[],
+export function buildLoadedSkillSystemMessage(
+  document: SkillDocument,
+  userIntent?: string,
 ): string {
-  if (results.length === 0) {
-    return `Skill "${skill.name}" ran, but it produced no step results.`;
+  const lines = [`Skill "${document.manifest.name}" loaded.`, ''];
+  const intent = userIntent?.trim();
+  if (intent) {
+    lines.push(`User intent/context: ${intent}`, '');
   }
-
-  const failed: Array<{ index: number; result: ToolResult }> = [];
-  const succeeded: Array<{ index: number; result: ToolResult }> = [];
-
-  for (const [index, result] of results.entries()) {
-    if (result.success) {
-      succeeded.push({ index, result });
-    } else {
-      failed.push({ index, result });
-    }
-  }
-
-  const lines: string[] = [];
-  if (failed.length > 0) {
-    lines.push(`Skill "${skill.name}" failed.`);
-    for (const item of failed) {
-      const output = item.result.output?.trim() || 'Unknown error.';
-      lines.push(`- Step ${item.index + 1} failed: ${output}`);
-    }
-    if (succeeded.length > 0) {
-      lines.push(`Succeeded steps: ${succeeded.map((item) => item.index + 1).join(', ')}`);
-    }
-    return lines.join('\n');
-  }
-
-  lines.push(`Skill "${skill.name}" completed successfully.`);
-  for (const item of succeeded) {
-    const output = item.result.output?.trim();
-    lines.push(`- Step ${item.index + 1}: ${output || 'Done.'}`);
-  }
+  lines.push('<skill markdown body>', document.body.trim(), '</skill markdown body>');
   return lines.join('\n');
 }
 
@@ -115,7 +87,7 @@ export function buildRuntimeSkillCommands(
       if (!commands.has(key)) {
         commands.set(key, {
           input: alias,
-          description: `Run skill: ${skill.name}`,
+          description: `Load skill guidance: ${skill.name}`,
         });
       }
     }
@@ -180,6 +152,35 @@ export function createLearningCommandHandler(
 
     if (sub === 'review') {
       const drafts = skillStore.list_drafts();
+      if (parts.length >= 3) {
+        const id = parts[2];
+        const document = await skillStore.loadDocument(id);
+        if (!document || document.manifest.scope !== 'learning_draft') {
+          emitRuntime({ type: 'turn_completed', turnId, content: `Draft "${id}" not found.` });
+          return true;
+        }
+
+        const full = parts[3] === 'full' || parts[3] === '--full';
+        if (full) {
+          emitRuntime({ type: 'turn_completed', turnId, content: document.raw || buildLoadedSkillSystemMessage(document) });
+          return true;
+        }
+
+        const lines = [
+          `Draft skill: ${document.manifest.name}`,
+          `id: ${document.manifest.id}`,
+          `description: ${document.manifest.description || '(none)'}`,
+          `task_type: ${document.manifest.task_type}`,
+          `triggers: ${document.manifest.triggers.join(', ') || '(none)'}`,
+          '',
+          document.body.trim().slice(0, 1200),
+          '',
+          `Use /skill review ${document.manifest.id} full to view the full SKILL.md.`,
+        ];
+        emitRuntime({ type: 'turn_completed', turnId, content: lines.join('\n') });
+        return true;
+      }
+
       if (drafts.length === 0) {
         emitRuntime({ type: 'turn_completed', turnId, content: 'No draft skills pending review.' });
       } else {
@@ -197,20 +198,25 @@ export function createLearningCommandHandler(
           emitRuntime({ type: 'turn_completed', turnId, content: `Draft "${id}" not found.` });
           return true;
         }
-        skillRegistry.register_manifest({
-          id: approved.id,
-          name: approved.name,
-          description: approved.trigger_condition,
-          triggers: [approved.trigger_condition],
-          trigger_pattern: approved.trigger_pattern,
-          task_type: approved.task_type,
-          scope: 'user',
-          enabled: true,
-          priority: 50,
-          version: 1,
-          updated_at: new Date(approved.updated_at).toISOString(),
-          source_path: `.chromatopsia/skills/user/${approved.id}.md`,
-        });
+        const approvedDocument = await skillStore.loadDocument(approved.id);
+        if (approvedDocument) {
+          skillRegistry.register_manifest(approvedDocument.manifest);
+        } else {
+          skillRegistry.register_manifest({
+            id: approved.id,
+            name: approved.name,
+            description: approved.trigger_condition,
+            triggers: [approved.trigger_condition],
+            trigger_pattern: approved.trigger_pattern,
+            task_type: approved.task_type,
+            scope: 'user',
+            enabled: true,
+            priority: 50,
+            version: 1,
+            updated_at: new Date(approved.updated_at).toISOString(),
+            source_path: `.chromatopsia/skills/user/${approved.id}/SKILL.md`,
+          });
+        }
         skillRegistry.register(approved);
         const aliases = build_skill_slash_aliases(approved).join(', ');
         emitRuntime({ type: 'notification', message: `Skill loaded: ${approved.name}${aliases ? ` (${aliases})` : ''}` });
@@ -289,52 +295,45 @@ export function createHandleUserInputTurn(
         return;
       }
 
-      const matchedSkill = resolveSkillFromSlashInput(trimmed, skillStore) ?? skillRegistry.trigger_match(trimmed);
+      const slashSkill = resolveSkillFromSlashInput(trimmed, skillStore);
+      const suggestedSkill = slashSkill ? null : skillRegistry.trigger_match(trimmed);
+      if (suggestedSkill) {
+        turnTaskType = suggestedSkill.task_type;
+      }
+      const matchedSkill = slashSkill;
       if (matchedSkill) {
         turnTaskType = matchedSkill.task_type;
-        const skillApprovalRequestHandler = createApprovalRequestHandler({
-          runtime,
+        const document = await skillStore.loadDocument(matchedSkill.id) ?? await skillStore.loadDocument(matchedSkill.name);
+        if (!document) {
+          const message = `Error: skill guidance not found: ${matchedSkill.name}`;
+          emitRuntime({ type: 'error', message });
+          session.add_message({ role: 'assistant', content: message });
+          emitRuntime({ type: 'turn_completed', turnId, content: message });
+          return;
+        }
+
+        const slashIntent = trimmed.replace(/^\S+\s*/, '').trim();
+        const memorySystemMessages = await loadMemorySystemMessages(trimmed, memoryIndexStore, memoryTopicStore);
+        const normalTurnSummary = await handle_normal_turn({
+          taskType: turnTaskType,
+          session,
+          provider,
+          skillRegistry,
           approvalHook,
-          emitRuntime,
-          turnId,
-        });
-        const skillToolCalls: ToolCall[] = [];
-        const results = await execute_skill(
-          matchedSkill,
           toolContext,
-          approvalHook,
-          skillApprovalRequestHandler,
-          {
-            onToolStart: (toolCall) => {
-              skillToolCalls.push(toolCall);
-              emitRuntime({ type: 'tool_started', turnId, toolCall });
-            },
-            onToolEnd: (toolCall, result) => {
-              emitRuntime({ type: 'tool_finished', turnId, toolCall, result });
-            },
-          },
-        );
-        if (skillToolCalls.length > 0) {
-          emitRuntime({ type: 'tool_batch_finished', turnId, toolCalls: skillToolCalls, results });
-        }
-        for (const result of results) {
-          if (result.success) {
-            emitRuntime({ type: 'notification', message: `[${matchedSkill.name}] Step succeeded` });
-          } else {
-            emitRuntime({ type: 'notification', message: `[${matchedSkill.name}] Step failed: ${result.output}` });
-          }
-        }
-        const skillSummary = summarize_skill_results(matchedSkill, results);
-        session.add_message({
-          role: 'assistant',
-          content: skillSummary,
+          isDebug,
+          runtime,
+          turnId,
+          runtimeMetadata,
+          extraSystemMessages: [
+            ...memorySystemMessages,
+            { role: 'system', content: buildLoadedSkillSystemMessage(document, slashIntent) },
+          ],
         });
-        emitRuntime({ type: 'assistant_message', turnId, content: skillSummary });
         await persistTurnMemory(trimmed, session, provider, memoryIndexStore, memoryTopicStore);
-        emitRuntime({ type: 'turn_completed', turnId, content: skillSummary });
         void triggerLearningAfterTurn(turnTaskType, trimmed, {
-          tool_calls: skillToolCalls,
-          tool_results: results,
+          tool_calls: normalTurnSummary.toolCalls,
+          tool_results: normalTurnSummary.toolResults,
         });
         return;
       }

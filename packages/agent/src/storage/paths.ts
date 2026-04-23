@@ -1,6 +1,7 @@
 import { existsSync } from 'fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { AppConfig } from '../foundation/types.js';
 
 export interface StoragePaths {
@@ -24,6 +25,11 @@ export interface StoragePaths {
 function hasMarker(dir: string, marker: string): boolean {
   return existsSync(path.join(dir, marker));
 }
+
+function resolveAgentPackageRoot(): string {
+  return path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+}
+
 
 export function resolveProjectRoot(workingDir: string, configPath?: string): string {
   if (configPath) {
@@ -62,6 +68,7 @@ export function resolveStoragePaths(options: {
   const logsDir = path.join(root, 'logs');
   const sessionsDir = path.join(root, 'sessions');
   const memoryDir = path.join(root, 'memory');
+  const agentPackageRoot = resolveAgentPackageRoot();
   const packageRoot = process.env.CHROMATOPSIA_PACKAGE_ROOT
     ? path.resolve(process.env.CHROMATOPSIA_PACKAGE_ROOT)
     : null;
@@ -82,6 +89,7 @@ export function resolveStoragePaths(options: {
     draftSkillsDir: path.join(skillsDir, 'drafts'),
     logsDir,
     builtinSkillsRoots: [
+      path.join(agentPackageRoot, 'skills', 'builtin'),
       path.join(projectRoot, 'skills', 'builtin'),
       path.join(projectRoot, 'packages', 'agent', 'skills', 'builtin'),
       ...(packageRoot

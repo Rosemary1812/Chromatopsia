@@ -43,6 +43,36 @@ function makeEvent(overrides: Partial<TurnEvent> = {}): TurnEvent {
 const toolCall: ToolCall = { id: 'tc-1', name: 'run_shell', arguments: { command: 'git status' } };
 const toolResult: ToolResult = { tool_call_id: 'tc-1', output: 'clean', success: true };
 
+const skillMarkdown = `---
+id: git-status-review
+name: Git Status Review
+description: Use when the user asks to inspect git status and summarize repository risk.
+user-invocable: true
+context: inline
+triggers:
+  - inspect git status
+task_type: git
+scope: learning_draft
+enabled: false
+priority: 10
+version: 1
+updated_at: 2026-04-23T00:00:00.000Z
+---
+
+# Git Status Review
+
+## When To Use
+Use this when git status and repository risk need to be summarized.
+
+## Procedure
+Inspect status and diffs, then explain risks before suggesting changes.
+
+## Pitfalls
+Do not discard user work.
+
+## Verification
+Confirm the answer references the observed status.`;
+
 describe('learning/worker', () => {
   it('appends real tool calls and results to turn events', async () => {
     const append = vi.fn(async () => {});
@@ -75,7 +105,7 @@ describe('learning/worker', () => {
   });
 
   it('only considers recent batch tool activity before running synthesis', async () => {
-    const provider = createProvider('{"should_learn":true,"confidence":0.9,"skill":{"id":"s1","name":"Skill","task_type":"git","steps":["a","b","c"],"pitfalls":["x","y"],"trigger_condition":"git"}}');
+    const provider = createProvider('{"should_learn":false,"confidence":0.9,"reasoning":"not enough recent tool activity"}');
     const eventStore = {
       append: vi.fn(async () => {}),
       incrementSessionTurns: vi.fn(async () => 2),
@@ -99,6 +129,41 @@ describe('learning/worker', () => {
     expect(result.triggered).toBe(false);
     expect(provider.chat).not.toHaveBeenCalled();
     expect(eventStore.resetSessionTurns).not.toHaveBeenCalled();
+  });
+
+  it('saves synthesized SKILL.md draft documents', async () => {
+    const provider = createProvider(skillMarkdown);
+    const saveDraft = vi.fn(async () => {});
+    const eventStore = {
+      append: vi.fn(async () => {}),
+      incrementSessionTurns: vi.fn(async () => 2),
+      recentBySession: vi.fn(async () => [
+        makeEvent({ tool_calls: [toolCall], tool_results: [toolResult] }),
+        makeEvent({ tool_calls: [toolCall], tool_results: [toolResult] }),
+      ]),
+      resetSessionTurns: vi.fn(async () => {}),
+    };
+
+    const worker = new LearningWorker({
+      provider,
+      session: createSession(),
+      skillStore: { save_draft: saveDraft } as never,
+      skillRegistry: { match: vi.fn(() => null), fuzzy_match: vi.fn(() => []) } as never,
+      eventStore: eventStore as never,
+    }, 2, 0.75);
+
+    const result = await worker.onTurnCompleted('git', 'check repo');
+
+    expect(result).toEqual({ triggered: true, draftName: 'Git Status Review' });
+    expect(saveDraft).toHaveBeenCalledWith(expect.objectContaining({
+      manifest: expect.objectContaining({
+        id: 'git-status-review',
+        scope: 'learning_draft',
+        enabled: false,
+      }),
+      body: expect.stringContaining('## Procedure'),
+    }));
+    expect(eventStore.resetSessionTurns).toHaveBeenCalledWith('session-1');
   });
 
   it('does not reset turn counter when synthesis does not produce an approved draft', async () => {

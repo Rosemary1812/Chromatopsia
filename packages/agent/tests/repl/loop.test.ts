@@ -45,6 +45,12 @@ function create_mock_provider(): LLMProvider {
           yield char;
         }
       }
+      return {
+        content: resp.content ?? '',
+        tool_calls: resp.tool_calls,
+        finish_reason: resp.finish_reason ?? (resp.tool_calls?.length ? 'tool_use' : 'stop'),
+        token_usage: resp.token_usage,
+      };
     }),
     get_model: () => 'mock-model',
   };
@@ -111,7 +117,6 @@ function setup_common_mocks(session: Session, provider: LLMProvider) {
       }) as unknown as learningWorkerModule.LearningWorker,
   );
   vi.spyOn(executorModule, 'execute_tool_calls_parallel').mockResolvedValue([]);
-  vi.spyOn(executorModule, 'execute_skill').mockResolvedValue([]);
   vi.spyOn(slashModule, 'handle_slash_command').mockReturnValue(false);
 }
 
@@ -155,23 +160,25 @@ describe('repl/loop — learning decoupled', () => {
     expect(session.messages.some((m) => m.role === 'assistant')).toBe(true);
   });
 
-  it('executes skill when trigger_match returns skill', async () => {
+  it('does not execute a skill macro when trigger_match only suggests a skill', async () => {
     const session = create_mock_session();
     const provider = create_mock_provider();
+    mock_llm_responses = [{ content: 'Use Skill tool if needed.', finish_reason: 'stop' }];
     setup_common_mocks(session, provider);
 
     vi.spyOn(skillRegistryModule, 'SkillRegistry').mockReturnValue({
       trigger_match: vi.fn(() => ({
         id: 'skill-1',
         name: 'Test Skill',
-        trigger_condition: 'test',
-        steps: ['Read file_path=/tmp/test.txt'],
-        pitfalls: [],
+        description: 'test guidance',
+        triggers: ['test'],
         task_type: 'test',
-        created_at: Date.now(),
-        updated_at: Date.now(),
-        call_count: 0,
-        success_count: 0,
+        scope: 'user',
+        enabled: true,
+        priority: 50,
+        version: 1,
+        updated_at: new Date().toISOString(),
+        source_path: '.chromatopsia/skills/user/skill-1/SKILL.md',
       })),
       match: vi.fn(() => null),
       fuzzy_match: vi.fn(() => []),
@@ -182,11 +189,8 @@ describe('repl/loop — learning decoupled', () => {
       show: vi.fn(),
       delete: vi.fn(),
       search: vi.fn(),
+      getById: vi.fn(),
     } as unknown as skillRegistryModule.SkillRegistry);
-
-    const execute_skill_spy = vi
-      .spyOn(executorModule, 'execute_skill')
-      .mockResolvedValue([{ tool_call_id: 'x', output: 'ok', success: true }]);
 
     const repl = await run_repl({
       working_dir: '/tmp',
@@ -196,8 +200,7 @@ describe('repl/loop — learning decoupled', () => {
     });
 
     await repl.handle_user_input('test trigger');
-    expect(execute_skill_spy).toHaveBeenCalled();
-    expect(provider.chat_stream).not.toHaveBeenCalled();
+    expect(provider.chat_stream).toHaveBeenCalled();
   });
 });
 

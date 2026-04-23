@@ -138,8 +138,8 @@ describe('AnthropicProvider', () => {
       expect(__mockMessagesCreate).toHaveBeenCalledWith(
         expect.objectContaining({
           messages: [
-            { role: 'user', content: [{ type: 'text', text: 'Hello' }] },
-            { role: 'assistant', content: [{ type: 'text', text: 'Hi there!' }] },
+            expect.objectContaining({ role: 'user', content: [{ type: 'text', text: 'Hello' }] }),
+            expect.objectContaining({ role: 'assistant', content: [{ type: 'text', text: 'Hi there!' }] }),
           ],
         })
       );
@@ -165,7 +165,7 @@ describe('AnthropicProvider', () => {
             text: 'Core instruction',
             cache_control: { type: 'ephemeral' },
           }],
-          messages: [{ role: 'user', content: [{ type: 'text', text: 'Hello' }] }],
+          messages: [expect.objectContaining({ role: 'user', content: [{ type: 'text', text: 'Hello' }] })],
         }),
       );
     });
@@ -303,6 +303,7 @@ describe('AnthropicProvider', () => {
       const messages: Message[] = [{ role: 'user', content: 'Run a command' }];
 
       __mockMessagesStream.mockResolvedValueOnce({
+        finalMessage: vi.fn(() => ({ usage: {} })),
         async *[Symbol.asyncIterator]() {
           yield {
             type: 'content_block_start',

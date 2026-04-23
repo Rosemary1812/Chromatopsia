@@ -14,7 +14,7 @@
 
 | | Tool | Skill |
 |---|---|---|
-| LLM 交互方式 | LLM **调用**它（tool_calls） | LLM **阅读**它（注入 system hint） |
+| LLM 交互方式 | LLM **调用**它（tool_calls） | LLM 通过 Skill tool 或 slash **按需加载并阅读**它 |
 | 表达能力 | 受 input_schema 限制，原子动作 | 任意结构化知识：步骤、陷阱、验证 |
 | 粒度 | 粗（独立原子操作） | 细（可包含判断分支、多步骤、注意事项） |
 | 持久性 | 永久修改 action space | 上下文注入，不改变 LLM 的工具边界 |
@@ -70,9 +70,9 @@
 ## 相关设计决策
 
 - Skill 的触发：反思机制（连续 N 次同类操作无 skill 命中）
-- Skill 的校准：使用中遇到错误自动 patch pitfalls/steps
+- Skill 的校准：使用中遇到错误后更新 Markdown guidance（常见坑、策略、验证标准）
 - Skill 的生命周期：生成 → 验证 → 使用 → 校准 → 淘汰（stale）
-- Skill 的加载：按 task_type 按需加载（渐进披露），不是全量加载
+- Skill 的加载：先暴露轻量目录，由模型调用 Skill tool 或用户 slash 指令按需加载完整 `SKILL.md`
 
 ## 参考
 

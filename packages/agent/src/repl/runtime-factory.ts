@@ -10,7 +10,7 @@ import { MemoryTopicStore } from '../memory/topic-store.js';
 import { TurnEventStore } from '../learning/turn-event-store.js';
 import { LearningWorker } from '../learning/worker.js';
 import { TraceLogger } from './trace-logger.js';
-import { register_all_tools } from '../foundation/tools/index.js';
+import { register_all_tools, register_skill_tool } from '../foundation/tools/index.js';
 import { createRuntimeEvent } from './runtime.js';
 import type { RuntimeEventInput } from './runtime.js';
 import { createLearningTurnHook } from './turn-hooks.js';
@@ -171,6 +171,7 @@ export async function create_agent_runtime_impl(
   const turnEventStore = new TurnEventStore({ baseDir: storagePaths.learningDir });
 
   await skill_store.load();
+  register_skill_tool(skill_store);
   for (const entry of skill_store.getManifest()) {
     skill_reg.register_manifest(entry);
   }

@@ -3,11 +3,15 @@ import { parseSkillMarkdown, serializeSkillMarkdown } from '../../src/skills/ski
 import type { Skill, SkillManifestEntry } from '../../src/foundation/types.js';
 
 describe('skills/skill-parser', () => {
-  it('parses frontmatter and sections into manifest and skill', () => {
+  it('parses only frontmatter metadata and preserves markdown body', () => {
     const raw = `---
 id: test-skill
 name: Test Skill
 description: test description
+user-invocable: true
+context: inline
+paths:
+  - "**/*.ts"
 triggers:
   - foo
   - bar
@@ -37,20 +41,27 @@ success_count: 1
 ## 验证方式
 - verify`;
 
-    const parsed = parseSkillMarkdown(raw, '.chromatopsia/skills/user/test-skill.md');
+    const parsed = parseSkillMarkdown(raw, '.chromatopsia/skills/user/test-skill/SKILL.md');
     expect(parsed).not.toBeNull();
     expect(parsed!.manifest.id).toBe('test-skill');
     expect(parsed!.manifest.triggers).toEqual(['foo', 'bar']);
-    expect(parsed!.skill.steps).toEqual(['step one', 'step two']);
-    expect(parsed!.skill.pitfalls).toEqual(['pitfall one']);
-    expect(parsed!.skill.verification).toContain('verify');
+    expect(parsed!.manifest.userInvocable).toBe(true);
+    expect(parsed!.manifest.context).toBe('inline');
+    expect(parsed!.manifest.paths).toEqual(['**/*.ts']);
+    expect(parsed!.body).toContain('## 操作步骤');
+    expect(parsed!.body).toContain('1. step one');
+    expect(parsed!.skill.steps).toEqual([]);
+    expect(parsed!.skill.pitfalls).toEqual([]);
+    expect(parsed!.skill.verification).toBeUndefined();
   });
 
-  it('serializes manifest and skill to markdown', () => {
+  it('serializes manifest and guidance body to SKILL.md', () => {
     const manifest: SkillManifestEntry = {
       id: 'serialize-skill',
       name: 'Serialize Skill',
       description: 'serialize desc',
+      userInvocable: true,
+      context: 'inline',
       triggers: ['trigger'],
       task_type: 'general',
       scope: 'user',
@@ -58,15 +69,41 @@ success_count: 1
       priority: 50,
       version: 1,
       updated_at: '2026-04-11T00:00:00.000Z',
-      source_path: '.chromatopsia/skills/user/serialize-skill.md',
+      sourcePath: '.chromatopsia/skills/user/serialize-skill/SKILL.md',
+      source_path: '.chromatopsia/skills/user/serialize-skill/SKILL.md',
+    };
+    const body = '# Serialize Skill\n\n## Procedure\nUse prose guidance, not executable macro steps.';
+
+    const markdown = serializeSkillMarkdown(manifest, body);
+    expect(markdown).toContain('id: serialize-skill');
+    expect(markdown).toContain('user-invocable: true');
+    expect(markdown).toContain('## Procedure');
+    expect(markdown).toContain('Use prose guidance');
+  });
+
+  it('keeps legacy Skill serialization as prose guidance, not macro steps', () => {
+    const manifest: SkillManifestEntry = {
+      id: 'legacy-skill',
+      name: 'Legacy Skill',
+      description: 'legacy desc',
+      userInvocable: true,
+      context: 'inline',
+      triggers: ['trigger'],
+      task_type: 'general',
+      scope: 'user',
+      enabled: true,
+      priority: 50,
+      version: 1,
+      updated_at: '2026-04-11T00:00:00.000Z',
+      sourcePath: '.chromatopsia/skills/user/legacy-skill/SKILL.md',
+      source_path: '.chromatopsia/skills/user/legacy-skill/SKILL.md',
     };
     const skill: Skill = {
-      id: 'serialize-skill',
-      name: 'Serialize Skill',
+      id: 'legacy-skill',
+      name: 'Legacy Skill',
       trigger_condition: 'trigger',
-      steps: ['do a', 'do b'],
-      pitfalls: ['avoid c'],
-      verification: 'check d',
+      steps: ['Read file_path=a.ts'],
+      pitfalls: [],
       task_type: 'general',
       created_at: Date.now(),
       updated_at: Date.now(),
@@ -75,8 +112,7 @@ success_count: 1
     };
 
     const markdown = serializeSkillMarkdown(manifest, skill);
-    expect(markdown).toContain('id: serialize-skill');
-    expect(markdown).toContain('## 操作步骤');
-    expect(markdown).toContain('1. do a');
+    expect(markdown).toContain('## Procedure');
+    expect(markdown).not.toContain('Read file_path=a.ts');
   });
 });

@@ -8,7 +8,6 @@ import * as skillRegistryModule from '../../src/skills/registry.js';
 import * as skillStoreModule from '../../src/skills/store.js';
 import * as hooksApprovalModule from '../../src/hooks/approval.js';
 import * as learningWorkerModule from '../../src/learning/worker.js';
-import * as executorModule from '../../src/repl/executor.js';
 import * as slashModule from '../../src/repl/slash.js';
 import * as storagePathsModule from '../../src/storage/paths.js';
 import * as fs from 'node:fs';
@@ -98,7 +97,6 @@ function setup_common_mocks(session: Session, provider: LLMProvider) {
         onTurnCompleted: vi.fn(async () => ({ triggered: false })),
       }) as unknown as learningWorkerModule.LearningWorker,
   );
-  vi.spyOn(executorModule, 'execute_skill').mockResolvedValue([]);
   vi.spyOn(slashModule, 'handle_slash_command').mockReturnValue(false);
 }
 
@@ -392,13 +390,13 @@ describe('repl/runtime', () => {
       reject_draft: vi.fn(async () => false),
       getAll: vi.fn(() => [
         {
-          id: 'git-triage',
-          name: 'Git 仓库排查',
-          trigger_condition: 'repo triage',
-          trigger_pattern: '^/rebase|^/triage',
+          id: 'llm-concept-explainer',
+          name: 'LLM Concept Explainer',
+          trigger_condition: 'LLM concept guidance',
+          trigger_pattern: '(解释|讲解).*(LLM|Transformer)',
           steps: [],
           pitfalls: [],
-          task_type: 'git',
+          task_type: 'docs',
           created_at: 0,
           updated_at: 0,
           call_count: 0,
@@ -407,18 +405,18 @@ describe('repl/runtime', () => {
       ]),
       getManifest: vi.fn(() => [
         {
-          id: 'git-triage',
-          name: 'Git 仓库排查',
-          description: 'repo triage',
-          triggers: ['repo triage'],
-          trigger_pattern: '^/rebase|^/triage',
-          task_type: 'git',
+          id: 'llm-concept-explainer',
+          name: 'LLM Concept Explainer',
+          description: 'LLM concept guidance',
+          triggers: ['LLM concept guidance'],
+          trigger_pattern: '(解释|讲解).*(LLM|Transformer)',
+          task_type: 'docs',
           scope: 'builtin',
           enabled: true,
           priority: 80,
           version: 1,
           updated_at: new Date().toISOString(),
-          source_path: 'packages/agent/skills/builtin/git-triage.md',
+          source_path: 'packages/agent/skills/builtin/llm-concept-explainer/SKILL.md',
         },
         {
           id: 'draft-fix',
@@ -444,9 +442,7 @@ describe('repl/runtime', () => {
     });
 
     expect(agentRuntime.list_slash_commands()).toEqual([
-      { input: '/git-triage', description: 'Run skill: Git 仓库排查' },
-      { input: '/rebase', description: 'Run skill: Git 仓库排查' },
-      { input: '/triage', description: 'Run skill: Git 仓库排查' },
+      { input: '/llm-concept-explainer', description: 'Load skill guidance: LLM Concept Explainer' },
     ]);
     expect(agentRuntime.list_draft_skills()).toEqual([
       { id: 'draft-fix', name: 'Draft Fix', task_type: 'fix-bug' },
@@ -454,10 +450,119 @@ describe('repl/runtime', () => {
     expect(agentRuntime.get_skill_load_message()).toContain('Loaded 2 skills');
   });
 
-  it('executes an auto-registered slash alias for a loaded skill', async () => {
+  it('lets the model load Skill guidance and then continue with ordinary tools', async () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'runtime-skill-tool-test-'));
+    fs.writeFileSync(path.join(tempRoot, 'note.txt'), 'ordinary tool output', 'utf-8');
+
     const session = create_mock_session();
     const provider = create_mock_provider();
+    mock_llm_responses = [
+      {
+        content: '',
+        finish_reason: 'tool_use',
+        tool_calls: [
+          { id: 'tc-skill', name: 'Skill', arguments: { name: 'LLM Concept Explainer', args: 'explain RMSNorm' } },
+        ],
+      },
+      {
+        content: '',
+        finish_reason: 'tool_use',
+        tool_calls: [
+          { id: 'tc-read', name: 'Read', arguments: { file_path: 'note.txt' } },
+        ],
+      },
+      { content: 'Used the loaded guidance and read the file.', finish_reason: 'stop' },
+    ];
     setup_common_mocks(session, provider);
+
+    vi.spyOn(skillStoreModule, 'SkillStore').mockReturnValue({
+      load: vi.fn(async () => {}),
+      list_drafts: vi.fn(() => []),
+      approve_draft: vi.fn(async () => null),
+      reject_draft: vi.fn(async () => false),
+      getAll: vi.fn(() => []),
+      getManifest: vi.fn(() => [
+        {
+          id: 'llm-concept-explainer',
+          name: 'LLM Concept Explainer',
+          description: 'LLM concept guidance',
+          userInvocable: true,
+          context: 'inline',
+          triggers: ['LLM concept guidance'],
+          task_type: 'docs',
+          scope: 'builtin',
+          enabled: true,
+          priority: 80,
+          version: 1,
+          updated_at: new Date().toISOString(),
+          sourcePath: 'packages/agent/skills/builtin/llm-concept-explainer/SKILL.md',
+          source_path: 'packages/agent/skills/builtin/llm-concept-explainer/SKILL.md',
+        },
+      ]),
+      loadDocument: vi.fn(async () => ({
+        manifest: {
+          id: 'llm-concept-explainer',
+          name: 'LLM Concept Explainer',
+          description: 'LLM concept guidance',
+          userInvocable: true,
+          context: 'inline',
+          triggers: ['LLM concept guidance'],
+          task_type: 'docs',
+          scope: 'builtin',
+          enabled: true,
+          priority: 80,
+          version: 1,
+          updated_at: new Date().toISOString(),
+          sourcePath: 'packages/agent/skills/builtin/llm-concept-explainer/SKILL.md',
+          source_path: 'packages/agent/skills/builtin/llm-concept-explainer/SKILL.md',
+        },
+        body: '# LLM Concept Explainer\n\n## Procedure\nExplain the concept using the six-section structure.',
+        raw: '',
+      })),
+    } as unknown as skillStoreModule.SkillStore);
+
+    const events: RuntimeEvent[] = [];
+    const agentRuntime = await create_agent_runtime({
+      working_dir: tempRoot,
+      provider: 'anthropic',
+      config: { api_key: 'test' },
+      runtime: { emit: (event) => events.push(event) },
+    });
+
+    await agentRuntime.handle_user_input('explain RMSNorm using the concept skill');
+
+    const toolFinished = events.filter((event) => event.type === 'tool_finished');
+    expect(toolFinished.some((event) => event.type === 'tool_finished' && event.toolCall.name === 'Skill' && event.result.output.includes('Explain the concept using the six-section structure.'))).toBe(true);
+    expect(toolFinished.some((event) => event.type === 'tool_finished' && event.toolCall.name === 'Read' && event.result.output.includes('ordinary tool output'))).toBe(true);
+    expect(provider.chat_stream).toHaveBeenCalledTimes(3);
+  });
+
+  it('preloads an auto-registered slash alias as guidance for a normal turn', async () => {
+    const session = create_mock_session();
+    const provider = create_mock_provider();
+    mock_llm_responses = [{ content: 'I used the preloaded guidance.', finish_reason: 'stop' }];
+    setup_common_mocks(session, provider);
+
+    const loadDocument = vi.fn(async () => ({
+      manifest: {
+        id: 'llm-concept-explainer',
+        name: 'LLM Concept Explainer',
+        description: 'LLM concept guidance',
+        userInvocable: true,
+        context: 'inline' as const,
+        triggers: ['LLM concept guidance'],
+        task_type: 'docs',
+        scope: 'builtin' as const,
+        enabled: true,
+        priority: 80,
+        version: 1,
+        updated_at: new Date().toISOString(),
+        sourcePath: 'packages/agent/skills/builtin/llm-concept-explainer/SKILL.md',
+        source_path: 'packages/agent/skills/builtin/llm-concept-explainer/SKILL.md',
+      },
+      body: '# LLM Concept Explainer\n\n## Procedure\nExplain the concept using the six-section structure.',
+      raw: '',
+    }));
 
     vi.spyOn(skillStoreModule, 'SkillStore').mockReturnValue({
       load: vi.fn(async () => {}),
@@ -466,12 +571,12 @@ describe('repl/runtime', () => {
       reject_draft: vi.fn(async () => false),
       getAll: vi.fn(() => [
         {
-          id: 'git-triage',
-          name: 'Git 仓库排查',
-          trigger_condition: 'repo triage',
-          steps: ['run_shell command="git status --short"'],
+          id: 'llm-concept-explainer',
+          name: 'LLM Concept Explainer',
+          trigger_condition: 'LLM concept guidance',
+          steps: [],
           pitfalls: [],
-          task_type: 'git',
+          task_type: 'docs',
           created_at: 0,
           updated_at: 0,
           call_count: 0,
@@ -480,22 +585,21 @@ describe('repl/runtime', () => {
       ]),
       getManifest: vi.fn(() => [
         {
-          id: 'git-triage',
-          name: 'Git 仓库排查',
-          description: 'repo triage',
-          triggers: ['repo triage'],
-          task_type: 'git',
+          id: 'llm-concept-explainer',
+          name: 'LLM Concept Explainer',
+          description: 'LLM concept guidance',
+          triggers: ['LLM concept guidance'],
+          task_type: 'docs',
           scope: 'builtin',
           enabled: true,
           priority: 80,
           version: 1,
           updated_at: new Date().toISOString(),
-          source_path: 'packages/agent/skills/builtin/git-triage.md',
+          source_path: 'packages/agent/skills/builtin/llm-concept-explainer/SKILL.md',
         },
       ]),
+      loadDocument,
     } as unknown as skillStoreModule.SkillStore);
-
-    const executeSkillSpy = vi.spyOn(executorModule, 'execute_skill').mockResolvedValue([]);
 
     const agentRuntime = await create_agent_runtime({
       working_dir: '/tmp',
@@ -504,12 +608,17 @@ describe('repl/runtime', () => {
       runtime: { emit: vi.fn() },
     });
 
-    await agentRuntime.handle_user_input('/git-triage');
+    await agentRuntime.handle_user_input('/llm-concept-explainer RMSNorm');
 
-    expect(executeSkillSpy).toHaveBeenCalledTimes(1);
+    expect(loadDocument).toHaveBeenCalledWith('llm-concept-explainer');
+    expect(provider.chat_stream).toHaveBeenCalledTimes(1);
+    const messages = (provider.chat_stream as unknown as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] ?? [];
+    expect(messages.some((message: Message) => message.role === 'system' && message.content.includes('Skill "LLM Concept Explainer" loaded.'))).toBe(true);
+    expect(messages.some((message: Message) => message.role === 'system' && message.content.includes('User intent/context: RMSNorm'))).toBe(true);
+    expect(messages.some((message: Message) => message.role === 'system' && message.content.includes('Explain the concept using the six-section structure.'))).toBe(true);
   });
 
-  it('emits a detailed assistant summary when skill execution succeeds', async () => {
+  it('reports an error when slash skill guidance cannot be loaded', async () => {
     const session = create_mock_session();
     const provider = create_mock_provider();
     setup_common_mocks(session, provider);
@@ -521,12 +630,12 @@ describe('repl/runtime', () => {
       reject_draft: vi.fn(async () => false),
       getAll: vi.fn(() => [
         {
-          id: 'git-triage',
-          name: 'Git 仓库排查',
-          trigger_condition: 'repo triage',
-          steps: ['run_shell command="git status --short"'],
+          id: 'llm-concept-explainer',
+          name: 'LLM Concept Explainer',
+          trigger_condition: 'LLM concept guidance',
+          steps: [],
           pitfalls: [],
-          task_type: 'git',
+          task_type: 'docs',
           created_at: 0,
           updated_at: 0,
           call_count: 0,
@@ -535,24 +644,21 @@ describe('repl/runtime', () => {
       ]),
       getManifest: vi.fn(() => [
         {
-          id: 'git-triage',
-          name: 'Git 仓库排查',
-          description: 'repo triage',
-          triggers: ['repo triage'],
-          task_type: 'git',
+          id: 'llm-concept-explainer',
+          name: 'LLM Concept Explainer',
+          description: 'LLM concept guidance',
+          triggers: ['LLM concept guidance'],
+          task_type: 'docs',
           scope: 'builtin',
           enabled: true,
           priority: 80,
           version: 1,
           updated_at: new Date().toISOString(),
-          source_path: 'packages/agent/skills/builtin/git-triage.md',
+          source_path: 'packages/agent/skills/builtin/llm-concept-explainer/SKILL.md',
         },
       ]),
+      loadDocument: vi.fn(async () => null),
     } as unknown as skillStoreModule.SkillStore);
-
-    vi.spyOn(executorModule, 'execute_skill').mockResolvedValue([
-      { tool_call_id: 'tc-1', output: 'working tree clean', success: true },
-    ]);
 
     const events: RuntimeEvent[] = [];
     const agentRuntime = await create_agent_runtime({
@@ -562,17 +668,29 @@ describe('repl/runtime', () => {
       runtime: { emit: (event) => events.push(event) },
     });
 
-    await agentRuntime.handle_user_input('/git-triage');
+    await agentRuntime.handle_user_input('/llm-concept-explainer');
 
-    const assistantMessage = events.find((event) => event.type === 'assistant_message');
-    expect(assistantMessage?.type).toBe('assistant_message');
-    expect(assistantMessage && assistantMessage.type === 'assistant_message' ? assistantMessage.content : '').toContain('completed successfully');
-    expect(assistantMessage && assistantMessage.type === 'assistant_message' ? assistantMessage.content : '').toContain('working tree clean');
+    expect(provider.chat_stream).not.toHaveBeenCalled();
+    expect(events.some((event) => event.type === 'error' && event.message.includes('skill guidance not found'))).toBe(true);
+    expect(events.some((event) => event.type === 'turn_completed' && event.content.includes('skill guidance not found'))).toBe(true);
   });
 
-  it('emits a detailed assistant summary when skill execution fails', async () => {
+  it('lets slash-loaded skill guidance continue with ordinary tools', async () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'runtime-slash-skill-test-'));
+    fs.writeFileSync(path.join(tempRoot, 'note.txt'), 'slash ordinary tool output', 'utf-8');
+
     const session = create_mock_session();
     const provider = create_mock_provider();
+    mock_llm_responses = [
+      {
+        content: '',
+        finish_reason: 'tool_use',
+        tool_calls: [
+          { id: 'tc-read', name: 'Read', arguments: { file_path: 'note.txt' } },
+        ],
+      },
+      { content: 'Used slash-loaded guidance and read the file.', finish_reason: 'stop' },
+    ];
     setup_common_mocks(session, provider);
 
     vi.spyOn(skillStoreModule, 'SkillStore').mockReturnValue({
@@ -582,12 +700,12 @@ describe('repl/runtime', () => {
       reject_draft: vi.fn(async () => false),
       getAll: vi.fn(() => [
         {
-          id: 'git-triage',
-          name: 'Git 仓库排查',
-          trigger_condition: 'repo triage',
-          steps: ['run_shell command="git status --short"', 'run_shell command="git diff --stat"'],
+          id: 'llm-concept-explainer',
+          name: 'LLM Concept Explainer',
+          trigger_condition: 'LLM concept guidance',
+          steps: [],
           pitfalls: [],
-          task_type: 'git',
+          task_type: 'docs',
           created_at: 0,
           updated_at: 0,
           call_count: 0,
@@ -596,40 +714,52 @@ describe('repl/runtime', () => {
       ]),
       getManifest: vi.fn(() => [
         {
-          id: 'git-triage',
-          name: 'Git 仓库排查',
-          description: 'repo triage',
-          triggers: ['repo triage'],
-          task_type: 'git',
+          id: 'llm-concept-explainer',
+          name: 'LLM Concept Explainer',
+          description: 'LLM concept guidance',
+          triggers: ['LLM concept guidance'],
+          task_type: 'docs',
           scope: 'builtin',
           enabled: true,
           priority: 80,
           version: 1,
           updated_at: new Date().toISOString(),
-          source_path: 'packages/agent/skills/builtin/git-triage.md',
+          source_path: 'packages/agent/skills/builtin/llm-concept-explainer/SKILL.md',
         },
       ]),
+      loadDocument: vi.fn(async () => ({
+        manifest: {
+          id: 'llm-concept-explainer',
+          name: 'LLM Concept Explainer',
+          description: 'LLM concept guidance',
+          userInvocable: true,
+          context: 'inline',
+          triggers: ['LLM concept guidance'],
+          task_type: 'docs',
+          scope: 'builtin',
+          enabled: true,
+          priority: 80,
+          version: 1,
+          updated_at: new Date().toISOString(),
+          source_path: 'packages/agent/skills/builtin/llm-concept-explainer/SKILL.md',
+        },
+        body: '# LLM Concept Explainer\n\n## Procedure\nUse ordinary tools after reading this guidance.',
+        raw: '',
+      })),
     } as unknown as skillStoreModule.SkillStore);
-
-    vi.spyOn(executorModule, 'execute_skill').mockResolvedValue([
-      { tool_call_id: 'tc-1', output: 'working tree clean', success: true },
-      { tool_call_id: 'tc-2', output: 'git diff failed with exit code 128', success: false },
-    ]);
 
     const events: RuntimeEvent[] = [];
     const agentRuntime = await create_agent_runtime({
-      working_dir: '/tmp',
+      working_dir: tempRoot,
       provider: 'anthropic',
       config: { api_key: 'test' },
       runtime: { emit: (event) => events.push(event) },
     });
 
-    await agentRuntime.handle_user_input('/git-triage');
+    await agentRuntime.handle_user_input('/llm-concept-explainer RMSNorm note');
 
-    const assistantMessage = events.find((event) => event.type === 'assistant_message');
-    expect(assistantMessage?.type).toBe('assistant_message');
-    expect(assistantMessage && assistantMessage.type === 'assistant_message' ? assistantMessage.content : '').toContain('failed');
-    expect(assistantMessage && assistantMessage.type === 'assistant_message' ? assistantMessage.content : '').toContain('Step 2 failed');
-    expect(assistantMessage && assistantMessage.type === 'assistant_message' ? assistantMessage.content : '').toContain('exit code 128');
+    const toolFinished = events.filter((event) => event.type === 'tool_finished');
+    expect(toolFinished.some((event) => event.type === 'tool_finished' && event.toolCall.name === 'Read' && event.result.output.includes('slash ordinary tool output'))).toBe(true);
+    expect(provider.chat_stream).toHaveBeenCalledTimes(2);
   });
 });

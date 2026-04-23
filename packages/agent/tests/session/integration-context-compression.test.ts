@@ -1020,27 +1020,14 @@ describe('【集成测试】上下文构建 + 压缩 pipeline', () => {
       console.log(GREEN(`✓ Context 构建成功: ${ctx.messages.length} 条消息，约 ${Math.round(totalChars / 4)} tokens`));
     });
 
-    it('T1-d: Skill 精准匹配注入', () => {
+    it('T1-d: Skill guidance 不再由精准/模糊匹配自动注入', () => {
       const session = manager.create_session('/workspace/test');
       const matchedSkill = mockSkillReg.match('git')!;
       const ctx = build_llm_context(session, 'git', matchedSkill, mockSkillReg as any);
-      const skillMsg = ctx.messages.find(m => m.content.includes('【技能】'));
-      SECTION('T1-d: Skill 精准匹配注入');
-      console.log(BOLD(YELLOW('Skill Block:')));
-      console.log(skillMsg?.content ?? '(未找到)');
-      expect(skillMsg).toBeDefined();
-      expect(skillMsg?.content).toContain('Git Commit');
-    });
-
-    it('T1-e: Fuzzy Match 降级', () => {
-      const session = manager.create_session('/workspace/test');
-      const ctx = build_llm_context(session, 'git commit', null, mockSkillReg as any);
-      const relatedMsg = ctx.messages.find(m => m.content.includes('【相关经验】'));
-      SECTION('T1-e: Fuzzy Match 降级');
-      console.log(BOLD(YELLOW('Related Skills Block:')));
-      console.log(relatedMsg?.content ?? '(未找到)');
-      expect(relatedMsg).toBeDefined();
-      expect(relatedMsg?.content).toContain('Git Commit');
+      const allContent = ctx.messages.map(m => m.content).join('\n');
+      SECTION('T1-d: Skill guidance 不自动注入');
+      expect(allContent).not.toContain('【技能】');
+      expect(allContent).not.toContain('【相关经验】');
     });
   });
 

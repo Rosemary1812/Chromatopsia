@@ -8,7 +8,7 @@ This directory contains repository-level benchmark infrastructure for Chromatops
 - Real task execution happens only in `runs/<run_id>/.../workspaces/`.
 - `reports/` stores finalized benchmark outputs.
 - Foundation benchmarking is the only active implementation scope right now.
-- Skill Learning is intentionally split out and kept as a TODO-only skeleton.
+- Skill Learning is intentionally split out and kept as a TODO-only skeleton; future evaluation should judge guidance quality, not macro replay.
 
 ## Current Scope
 
@@ -19,7 +19,7 @@ This directory contains repository-level benchmark infrastructure for Chromatops
   - trace capture
   - scoring
   - baseline JSON/HTML reporting
-- Skill Learning remains design-only and is not part of runner, scoring, or reports.
+- Skill Learning remains design-only and is not part of runner, scoring, or reports. Its eventual target is `SKILL.md` guidance quality and usefulness after loading through the Skill tool.
 - Current fixture inventory is 12 foundation tasks across bug-fix, feature, refactor, and devops.
 
 ## Config Inheritance

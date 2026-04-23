@@ -25,6 +25,7 @@ describe('repl/approval-bridge', () => {
     };
     const approvalHook = {
       wait_for_decision: vi.fn(),
+      submit_decision: vi.fn(),
     } as unknown as ApprovalHook;
 
     const handler = createApprovalRequestHandler({

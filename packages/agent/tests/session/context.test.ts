@@ -3,20 +3,15 @@
  *
  * 测试范围：
  * 1. build_system_prompt — 带/不带 project_context、user_context
- * 2. build_skill_injection — 格式正确，包含 steps/pitfalls/verification
- * 3. build_related_skills_injection — 最多 3 个，截断多余
- * 4. (format_recent_messages removed — logic inlined into build_llm_context)
- * 5. build_llm_context — system + skill + recent 三段组合正确
- * 6. LLMContext 方法 — appendChunk / finalizeStream / finishAssistantMessage
- * 7. 无 skill 匹配时：走 fuzzy_match 路径
- * 8. session 无消息时：messages 仅含 system prompt
+ * 2. Skill directory listing — exposes lightweight skill metadata only
+ * 3. build_llm_context — system + skill directory + recent history
+ * 4. LLMContext 方法 — appendChunk / finalizeStream / finishAssistantMessage
+ * 5. session 无消息时：messages 仅含 system prompt
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   build_system_prompt,
-  build_skill_injection,
-  build_related_skills_injection,
   build_llm_context,
 } from '../../src/session/context.js';
 import type { Session, Skill } from '../../src/foundation/types.js';
@@ -127,72 +122,6 @@ describe('build_system_prompt', () => {
   });
 });
 
-describe('build_skill_injection', () => {
-  it('contains skill name and trigger_condition', () => {
-    const skill = makeSkill({ name: 'Git Commit', trigger_condition: 'Commit changes' });
-    const block = build_skill_injection(skill);
-    expect(block).toContain('【技能】Git Commit');
-    expect(block).toContain('触发条件：Commit changes');
-  });
-
-  it('formats steps with numbers', () => {
-    const skill = makeSkill({ steps: ['git add .', 'git commit -m "fix"'] });
-    const block = build_skill_injection(skill);
-    expect(block).toContain('1. git add .');
-    expect(block).toContain('2. git commit -m "fix"');
-  });
-
-  it('includes pitfalls when present', () => {
-    const skill = makeSkill({ pitfalls: ['Do not force push'] });
-    const block = build_skill_injection(skill);
-    expect(block).toContain('常见陷阱');
-    expect(block).toContain('Do not force push');
-  });
-
-  it('includes verification when present', () => {
-    const skill = makeSkill({ verification: 'git log --oneline' });
-    const block = build_skill_injection(skill);
-    expect(block).toContain('验证方法：git log --oneline');
-  });
-
-  it('omits verification line when absent', () => {
-    const skill = makeSkill({ verification: undefined });
-    const block = build_skill_injection(skill);
-    expect(block).not.toContain('验证方法：');
-  });
-});
-
-describe('build_related_skills_injection', () => {
-  it('returns empty string for empty array', () => {
-    expect(build_related_skills_injection([])).toBe('');
-  });
-
-  it('contains header and skill names', () => {
-    const skills = [makeSkill({ name: 'Skill A' }), makeSkill({ name: 'Skill B' })];
-    const block = build_related_skills_injection(skills);
-    expect(block).toContain('【相关经验】');
-    expect(block).toContain('Skill A');
-    expect(block).toContain('Skill B');
-  });
-
-  it('limits to 3 skills', () => {
-    const skills = [
-      makeSkill({ name: 'S1' }),
-      makeSkill({ name: 'S2' }),
-      makeSkill({ name: 'S3' }),
-      makeSkill({ name: 'S4' }),
-      makeSkill({ name: 'S5' }),
-    ];
-    const block = build_related_skills_injection(skills);
-    expect(block).toContain('S1');
-    expect(block).toContain('S2');
-    expect(block).toContain('S3');
-    expect(block).not.toContain('S4');
-    expect(block).not.toContain('S5');
-  });
-});
-
-
 describe('build_llm_context', () => {
   it('returns LLMContext with messages array', () => {
     const session = makeSession();
@@ -211,28 +140,15 @@ describe('build_llm_context', () => {
     expect(ctx.messages[0].content).toContain('【项目】P');
   });
 
-  it('injects matched skill as system message', () => {
+  it('does not inject matched or fuzzy skill bodies automatically', () => {
     const session = makeSession();
     const reg = makeSkillReg();
-    const skill = makeSkill({ name: 'Run Tests', steps: ['npm test'] });
-    const ctx = build_llm_context(session, 'test', skill, reg);
-    const systemMessages = ctx.messages.filter((m) => m.role === 'system');
-    const skillMsgs = systemMessages.filter((m) => m.content.includes('【技能】'));
-    expect(skillMsgs.length).toBe(1);
-    expect(skillMsgs[0].content).toContain('Run Tests');
-  });
-
-  it('uses fuzzy_match when no precise match', () => {
-    const session = makeSession();
-    const reg = makeSkillReg();
-    (reg.fuzzy_match as ReturnType<typeof vi.fn>).mockReturnValue([
-      makeSkill({ name: 'Fuzzy Skill' }),
-    ]);
-    const ctx = build_llm_context(session, 'unknown-task', null, reg);
-    const systemMessages = ctx.messages.filter((m) => m.role === 'system');
-    const relatedMsgs = systemMessages.filter((m) => m.content.includes('【相关经验】'));
-    expect(relatedMsgs.length).toBe(1);
-    expect(relatedMsgs[0].content).toContain('Fuzzy Skill');
+    (reg.fuzzy_match as ReturnType<typeof vi.fn>).mockReturnValue([makeSkill({ name: 'Fuzzy Skill' })]);
+    const ctx = build_llm_context(session, 'unknown-task', makeSkill({ name: 'Run Tests' }), reg);
+    const allContent = ctx.messages.map((m) => m.content).join('\n');
+    expect(allContent).not.toContain('【技能】');
+    expect(allContent).not.toContain('【相关经验】');
+    expect(allContent).not.toContain('Fuzzy Skill');
   });
 
   it('appends recent messages as system block', () => {

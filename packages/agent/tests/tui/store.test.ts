@@ -223,13 +223,13 @@ describe('TuiStore', () => {
     store.setAvailableCommands([
       ...store.getState().availableCommands,
       {
-        input: '/git-triage',
-        description: 'Run skill: Git 仓库排查',
+        input: '/llm-concept-explainer',
+        description: 'Load skill guidance: LLM Concept Explainer',
         source: 'skill',
       },
     ]);
 
-    expect(store.getState().availableCommands.some((item) => item.input === '/git-triage')).toBe(true);
+    expect(store.getState().availableCommands.some((item) => item.input === '/llm-concept-explainer')).toBe(true);
   });
 
   it('captures notifications and errors', () => {

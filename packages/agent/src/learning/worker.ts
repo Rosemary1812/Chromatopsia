@@ -1,4 +1,4 @@
-import type { LLMProvider, Session, Skill, TaskBufferEntry, ToolCall, ToolResult, TurnEvent } from '../foundation/types.js';
+import type { LLMProvider, Session, SkillDocument, TaskBufferEntry, ToolCall, ToolResult, TurnEvent } from '../foundation/types.js';
 import { SkillStore } from '../skills/store.js';
 import { SkillRegistry } from '../skills/registry.js';
 import { TurnEventStore } from './turn-event-store.js';
@@ -42,25 +42,31 @@ function countToolEvents(buffer: TaskBufferEntry[]): number {
   return buffer.filter((entry) => entry.tool_calls.length > 0 || entry.tool_results.length > 0).length;
 }
 
-function isValidSkillDraft(skill: Partial<Skill>): skill is Skill {
+function isValidSkillDocumentDraft(document: SkillDocument | undefined): document is SkillDocument {
+  if (!document) return false;
+  const manifest = document.manifest;
   return Boolean(
-    skill.id &&
-      skill.name &&
-      skill.trigger_condition &&
-      skill.task_type &&
-      Array.isArray(skill.steps) &&
-      Array.isArray(skill.pitfalls),
+    manifest.id &&
+      manifest.name &&
+      manifest.description &&
+      manifest.task_type &&
+      document.body.trim().length > 0 &&
+      /^#\s+/m.test(document.body),
   );
 }
 
-function normalizeDraft(skill: Skill): Skill {
-  const now = Date.now();
+function normalizeDraftDocument(document: SkillDocument): SkillDocument {
   return {
-    ...skill,
-    created_at: skill.created_at || now,
-    updated_at: now,
-    call_count: skill.call_count ?? 0,
-    success_count: skill.success_count ?? 0,
+    ...document,
+    manifest: {
+      ...document.manifest,
+      userInvocable: document.manifest.userInvocable ?? true,
+      context: document.manifest.context ?? 'inline',
+      scope: 'learning_draft',
+      enabled: false,
+      priority: Math.min(document.manifest.priority, 10),
+      updated_at: new Date().toISOString(),
+    },
   };
 }
 
@@ -154,16 +160,13 @@ export class LearningWorker {
       return { triggered: false };
     }
 
-    if (!synthesis.skill || Object.keys(synthesis.skill).length === 0) {
-      return { triggered: false };
-    }
-    if (!isValidSkillDraft(synthesis.skill)) {
+    if (!isValidSkillDocumentDraft(synthesis.document)) {
       return { triggered: false };
     }
 
-    const draft = normalizeDraft(synthesis.skill);
+    const draft = normalizeDraftDocument(synthesis.document);
     await this.skillStore.save_draft(draft);
-    return { triggered: true, draftName: draft.name };
+    return { triggered: true, draftName: draft.manifest.name };
   }
 
   private passesConfidenceGate(confidence?: number): boolean {

@@ -38,7 +38,7 @@ describe('SkillStore', () => {
     const index = JSON.parse(indexRaw) as { skills: Array<{ id: string; source_path: string }> };
     expect(index.skills.some((s) => s.id === 's1')).toBe(true);
 
-    const mdPath = resolve(TEST_DIR, '.chromatopsia', 'skills', 'user', 's1.md');
+    const mdPath = resolve(TEST_DIR, '.chromatopsia', 'skills', 'user', 's1', 'SKILL.md');
     const mdRaw = await readFile(mdPath, 'utf-8');
     expect(mdRaw).toContain('id: s1');
     expect(mdRaw).toContain('name: Git Rebase');
@@ -78,8 +78,9 @@ describe('SkillStore', () => {
     const all = store.getAll();
     expect(all.some((s) => s.id === 'legacy-1')).toBe(true);
 
-    const mdRaw = await readFile(resolve(TEST_DIR, '.chromatopsia', 'skills', 'user', 'legacy-1.md'), 'utf-8');
+    const mdRaw = await readFile(resolve(TEST_DIR, '.chromatopsia', 'skills', 'user', 'legacy-1', 'SKILL.md'), 'utf-8');
     expect(mdRaw).toContain('id: legacy-1');
+    expect(mdRaw).toContain('## Procedure');
   });
 
   it('fuzzySearch and byTaskType still work', async () => {
@@ -135,6 +136,85 @@ success_count: 0
     const store = new SkillStore(TEST_DIR);
     await store.load();
     expect(store.getAll().some((s) => s.id === 'manual')).toBe(true);
+  });
+
+  it('loads directory SKILL.md files from runtime user skills', async () => {
+    const runtimeUserDir = resolve(TEST_DIR, '.chromatopsia', 'skills', 'user', 'dir-skill');
+    await mkdir(runtimeUserDir, { recursive: true });
+    await writeFile(
+      resolve(runtimeUserDir, 'SKILL.md'),
+      `---
+id: dir-skill
+name: Directory Skill
+description: directory guidance
+user-invocable: true
+context: inline
+task_type: general
+scope: user
+enabled: true
+priority: 50
+version: 1
+updated_at: 2026-04-11T00:00:00.000Z
+---
+
+# Directory Skill
+
+## Procedure
+Read the full body.`,
+      'utf-8',
+    );
+
+    const store = new SkillStore(TEST_DIR);
+    await store.load();
+    expect(store.getManifest().some((m) => m.id === 'dir-skill')).toBe(true);
+    expect(store.getDocumentByName('Directory Skill')?.body).toContain('Read the full body');
+  });
+
+  it('saves raw SKILL.md drafts as directory skills and approves them for SkillTool loading', async () => {
+    const store = new SkillStore(TEST_DIR);
+    const raw = `---
+id: learned-git-status
+name: Learned Git Status
+description: Use when git status needs repository risk guidance.
+user-invocable: true
+context: inline
+triggers:
+  - inspect git status
+task_type: git
+scope: learning_draft
+enabled: false
+priority: 10
+version: 1
+updated_at: 2026-04-23T00:00:00.000Z
+---
+
+# Learned Git Status
+
+## When To Use
+Use this for git status reviews.
+
+## Procedure
+Inspect status and diffs before summarizing.
+
+## Verification
+Mention observed status.`;
+
+    await store.save_draft(raw);
+
+    const draftPath = resolve(TEST_DIR, '.chromatopsia', 'skills', 'drafts', 'learned-git-status', 'SKILL.md');
+    const draftRaw = await readFile(draftPath, 'utf-8');
+    expect(draftRaw).toContain('name: Learned Git Status');
+    expect(store.getDocumentByName('learned-git-status')?.body).toContain('Inspect status and diffs');
+
+    const approved = await store.approve_draft('learned-git-status');
+    expect(approved?.id).toBe('learned-git-status');
+
+    const reloaded = new SkillStore(TEST_DIR);
+    await reloaded.load();
+    const userPath = resolve(TEST_DIR, '.chromatopsia', 'skills', 'user', 'learned-git-status', 'SKILL.md');
+    await expect(readFile(userPath, 'utf-8')).resolves.toContain('scope: user');
+    const document = await reloaded.loadDocument('Learned Git Status');
+    expect(document?.body).toContain('Inspect status and diffs');
   });
 
   it('supports draft save/list/approve/reject workflow', async () => {

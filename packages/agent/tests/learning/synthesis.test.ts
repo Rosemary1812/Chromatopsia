@@ -14,6 +14,36 @@ const makeEntry = (task_type: string, tool_names: string[]): TaskBufferEntry => 
   timestamp: Date.now(),
 });
 
+const skillMarkdown = `---
+id: git-status-review
+name: Git Status Review
+description: Use when the user asks to inspect git status and summarize repository risk.
+user-invocable: true
+context: inline
+triggers:
+  - inspect git status
+task_type: git
+scope: learning_draft
+enabled: false
+priority: 10
+version: 1
+updated_at: 2026-04-23T00:00:00.000Z
+---
+
+# Git Status Review
+
+## When To Use
+Use this when git status and repository risk need to be summarized.
+
+## Procedure
+Inspect status and diffs, then explain risks before suggesting changes.
+
+## Pitfalls
+Do not discard user work.
+
+## Verification
+Confirm the answer references the observed status.`;
+
 describe('learning/synthesis', () => {
   it('summarize_task_buffer returns (empty) for empty buffer', () => {
     expect(summarize_task_buffer([])).toBe('(empty)');
@@ -26,57 +56,49 @@ describe('learning/synthesis', () => {
     expect(summary).toContain('Read');
   });
 
-  it('parse_synthesis_result parses valid JSON skill object', () => {
-    const json = JSON.stringify({
-      should_learn: true,
-      confidence: 0.91,
-      reasoning: 'repeated workflow',
-      skill: {
-        id: 'skill-1',
-        name: 'Test Skill',
-        task_type: 'test',
-        steps: ['step1', 'step2'],
-        pitfalls: ['pitfall1'],
-        trigger_condition: 'test condition',
-      },
-    });
-    const result = parse_synthesis_result(json);
-    expect(result.skill).toBeDefined();
-    expect((result.skill as { name?: string }).name).toBe('Test Skill');
+  it('parse_synthesis_result parses raw SKILL.md guidance', () => {
+    const result = parse_synthesis_result(skillMarkdown);
     expect(result.should_learn).toBe(true);
-    expect(result.confidence).toBe(0.91);
+    expect(result.document?.manifest.id).toBe('git-status-review');
+    expect(result.document?.body).toContain('## Procedure');
+    expect(result.skill.name).toBe('Git Status Review');
   });
 
-  it('parse_synthesis_result extracts JSON from markdown code block', () => {
-    const content = 'Some text\n```json\n{"should_learn":true,"skill":{"id":"s1","name":"S"}}\n```\nMore text';
-    const result = parse_synthesis_result(content);
-    expect((result.skill as { name?: string }).name).toBe('S');
+  it('parse_synthesis_result extracts SKILL.md from markdown code block', () => {
+    const result = parse_synthesis_result(`Some text is not allowed outside exact fence?\n\`\`\`markdown\n${skillMarkdown}\n\`\`\``);
+    expect(result.should_learn).toBe(false);
+
+    const fenced = parse_synthesis_result(`\`\`\`md\n${skillMarkdown}\n\`\`\``);
+    expect(fenced.document?.manifest.name).toBe('Git Status Review');
   });
 
-  it('parse_synthesis_result returns empty skill on invalid JSON', () => {
-    const result = parse_synthesis_result('not json at all');
+  it('parse_synthesis_result parses no-learn JSON', () => {
+    const result = parse_synthesis_result('{"should_learn":false,"confidence":0.4,"reasoning":"not reusable"}');
     expect(result.skill).toEqual({});
     expect(result.should_learn).toBe(false);
-    expect(result.reasoning).toBe('not json at all');
+    expect(result.confidence).toBe(0.4);
+    expect(result.reasoning).toBe('not reusable');
   });
 
-  it('parse_synthesis_result returns empty skill for empty object', () => {
-    const result = parse_synthesis_result('{}');
+  it('parse_synthesis_result returns empty skill on invalid output', () => {
+    const result = parse_synthesis_result('not json or markdown at all');
     expect(result.skill).toEqual({});
     expect(result.should_learn).toBe(false);
+    expect(result.reasoning).toBe('not json or markdown at all');
   });
 
-  it('parse_synthesis_result remains backward compatible with direct skill JSON', () => {
+  it('parse_synthesis_result rejects legacy direct skill JSON', () => {
     const result = parse_synthesis_result('{"id":"legacy","name":"Legacy Skill","task_type":"git","steps":["a"],"pitfalls":["b"],"trigger_condition":"x"}');
-    expect(result.should_learn).toBe(true);
-    expect((result.skill as { id?: string }).id).toBe('legacy');
+    expect(result.should_learn).toBe(false);
+    expect(result.skill).toEqual({});
+    expect(result.document).toBeUndefined();
   });
 
-  it('synthesize_skill uses learning input and provider output', async () => {
+  it('synthesize_skill asks provider for SKILL.md and parses provider output', async () => {
     const provider: LLMProvider = {
       name: 'mock',
       chat: vi.fn(async () => ({
-        content: '{"should_learn":true,"confidence":0.88,"skill":{"id":"draft-1","name":"Draft 1","task_type":"git","steps":["a","b","c"],"pitfalls":["x","y"],"trigger_condition":"git work"}}',
+        content: skillMarkdown,
         finish_reason: 'stop',
       })),
       chat_stream: vi.fn(),
@@ -93,8 +115,8 @@ describe('learning/synthesis', () => {
     );
 
     expect(provider.chat).toHaveBeenCalledTimes(1);
+    expect((provider.chat as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0][0].content).toContain('完整的 SKILL.md');
     expect(result.should_learn).toBe(true);
-    expect(result.confidence).toBe(0.88);
-    expect((result.skill as { id?: string }).id).toBe('draft-1');
+    expect(result.document?.manifest.id).toBe('git-status-review');
   });
 });

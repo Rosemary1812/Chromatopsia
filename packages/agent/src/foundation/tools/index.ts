@@ -14,12 +14,14 @@ import { grep_definition } from './grep.js';
 import { run_shell_definition } from './bash.js';
 import { websearch_definition } from './websearch.js';
 import { webfetch_definition } from './webfetch.js';
+import { create_skill_definition } from './skill.js';
+import type { SkillStore } from '../../skills/store.js';
 
 /**
  * Register all 7 built-in tools with the global registry.
  * Call this once during agent startup before running the REPL.
  */
-export function register_all_tools(): void {
+export function register_all_tools(skillStore?: SkillStore): void {
   registry.register(read_definition);
   registry.register(edit_definition);
   registry.register(glob_definition);
@@ -27,4 +29,12 @@ export function register_all_tools(): void {
   registry.register(run_shell_definition);
   registry.register(websearch_definition);
   registry.register(webfetch_definition);
+  if (skillStore) {
+    registry.register(create_skill_definition(skillStore));
+  }
 }
+
+export function register_skill_tool(skillStore: SkillStore): void {
+  registry.register(create_skill_definition(skillStore));
+}
+

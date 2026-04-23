@@ -331,6 +331,10 @@ export interface SkillManifestEntry {
   id: string;
   name: string;
   description: string;
+  userInvocable?: boolean;
+  context?: 'inline' | 'fork';
+  agent?: string;
+  paths?: string[];
   triggers: string[];
   trigger_pattern?: string;
   task_type: string;
@@ -339,7 +343,14 @@ export interface SkillManifestEntry {
   priority: number;
   version: number;
   updated_at: string;
+  sourcePath?: string;
   source_path: string;
+}
+
+export interface SkillDocument {
+  manifest: SkillManifestEntry;
+  body: string;
+  raw: string;
 }
 
 export type MemoryType = 'user' | 'feedback' | 'project' | 'reference';
@@ -364,6 +375,8 @@ export interface SynthesisResult {
   should_learn: boolean;
   confidence?: number;
   skill: Partial<Skill>;
+  document?: SkillDocument;
+  rawDocument?: string;
   reasoning?: string;
 }
 

@@ -4,10 +4,32 @@ export class SkillRegistry {
   private skills = new Map<string, Skill>(); // id → Skill
   private manifest = new Map<string, SkillManifestEntry>(); // id → SkillManifestEntry
   private by_type = new Map<string, Skill[]>(); // task_type → Skill[]
+  private by_name = new Map<string, SkillManifestEntry>();
 
   register(skill: Skill): void {
-    const manifest = this.manifest.get(skill.id);
-    if (manifest && (!manifest.enabled || manifest.scope === 'learning_draft')) {
+    let manifest = this.manifest.get(skill.id);
+    if (!manifest) {
+      manifest = {
+        id: skill.id,
+        name: skill.name,
+        description: skill.trigger_condition,
+        userInvocable: true,
+        context: 'inline',
+        paths: [],
+        triggers: [skill.trigger_condition],
+        trigger_pattern: skill.trigger_pattern,
+        task_type: skill.task_type,
+        scope: 'user',
+        enabled: true,
+        priority: 50,
+        version: 1,
+        updated_at: new Date(skill.updated_at || Date.now()).toISOString(),
+        sourcePath: `.chromatopsia/skills/user/${skill.id}/SKILL.md`,
+        source_path: `.chromatopsia/skills/user/${skill.id}/SKILL.md`,
+      };
+      this.register_manifest(manifest);
+    }
+    if (!manifest.enabled || manifest.scope === 'learning_draft') {
       return;
     }
     this.skills.set(skill.id, skill);
@@ -23,6 +45,8 @@ export class SkillRegistry {
 
   register_manifest(entry: SkillManifestEntry): void {
     this.manifest.set(entry.id, entry);
+    this.by_name.set(entry.name.toLowerCase(), entry);
+    this.by_name.set(entry.id.toLowerCase(), entry);
   }
 
   match(task_type: string): Skill | null {
@@ -43,9 +67,9 @@ export class SkillRegistry {
    * 检查 trigger_pattern（正则，权重+100）、trigger_condition（关键词，权重+50）、
    * name（模糊，权重+5），得分 > 30 才触发。
    */
-  trigger_match(input: string): Skill | null {
+  trigger_match(input: string): SkillManifestEntry | null {
     const q = input.toLowerCase();
-    let best: Skill | null = null;
+    let best: SkillManifestEntry | null = null;
     let bestScore = 0;
 
     for (const skill of this.skills.values()) {
@@ -81,7 +105,7 @@ export class SkillRegistry {
 
       if (score > bestScore) {
         bestScore = score;
-        best = skill;
+        best = manifest ?? this.manifest.get(skill.id) ?? null;
       }
     }
 
@@ -128,6 +152,8 @@ export class SkillRegistry {
     if (!skill) return;
     this.skills.delete(skill.id);
     this.manifest.delete(skill.id);
+    this.by_name.delete(skill.id.toLowerCase());
+    this.by_name.delete(skill.name.toLowerCase());
     const list = this.by_type.get(skill.task_type);
     if (list) {
       const filtered = list.filter((s) => s.id !== skill.id);
@@ -155,6 +181,21 @@ export class SkillRegistry {
     return this.skills.get(id);
   }
 
+  getManifestByName(name: string): SkillManifestEntry | undefined {
+    return this.by_name.get(name.toLowerCase());
+  }
+
+  listAvailableSkills(): Array<Pick<SkillManifestEntry, 'name' | 'description' | 'scope' | 'priority'>> {
+    return this.getManifest()
+      .filter((entry) => entry.enabled && entry.scope !== 'learning_draft')
+      .map((entry) => ({
+        name: entry.name,
+        description: entry.description,
+        scope: entry.scope,
+        priority: entry.priority,
+      }));
+  }
+
   getManifest(): SkillManifestEntry[] {
     return [...this.manifest.values()].sort((a, b) => {
       if (a.priority !== b.priority) return b.priority - a.priority;
@@ -165,10 +206,10 @@ export class SkillRegistry {
   build_directory_listing(): string {
     const entries = this.getManifest().filter((e) => e.enabled);
     if (entries.length === 0) return '';
-    const lines = ['【Skills目录】'];
+    const lines = ['Available skills (load full guidance with the Skill tool when useful):'];
     for (const entry of entries) {
       lines.push(
-        `- id=${entry.id}; name=${entry.name}; path=${entry.source_path}; scope=${entry.scope}; priority=${entry.priority}`,
+        `- ${entry.name}: ${entry.description || 'No description'} (scope=${entry.scope})`,
       );
     }
     return lines.join('\n');

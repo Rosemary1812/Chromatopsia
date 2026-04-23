@@ -374,7 +374,7 @@ export class AnthropicProvider implements LLMProvider {
       }
 
       // P0-3: 缓存统计日志（streaming）
-      const finalMessage = stream.finalMessage() as any;
+      const finalMessage = typeof (stream as any).finalMessage === 'function' ? (stream as any).finalMessage() : undefined;
       const usage = finalMessage?.usage;
       if (usage?.cache_creation_input_tokens && usage.cache_creation_input_tokens > 0) {
         console.debug(`[Cache] Created: ${usage.cache_creation_input_tokens} tokens cached`);
