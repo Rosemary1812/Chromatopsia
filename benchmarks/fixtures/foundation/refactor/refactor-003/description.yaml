@@ -1,0 +1,39 @@
+id: refactor-003
+category: refactor
+language: Python
+difficulty: medium
+
+title: "Extract shared boolean parser"
+
+description: |
+  Two modules currently duplicate the same boolean parsing logic for user-facing flags.
+  Refactor them to use a shared helper and preserve the current truthy and falsy behavior.
+
+acceptance:
+  - type: shell
+    command: "python -m pytest tests/ -q"
+    expect_exit_code: 0
+
+hints:
+  - "The duplicated parsing logic appears in two separate modules."
+  - "A shared helper module already exists."
+
+must_read_files:
+  - "src/feature_flags.py"
+  - "src/config_parser.py"
+  - "src/boolean_utils.py"
+  - "tests/test_boolean_refactor.py"
+
+evaluation:
+  quality_gates:
+    - type: shell
+      command: "python -m pytest tests/ -q"
+  llm_context_questions:
+    - "Did the agent identify the duplicated boolean parsing logic?"
+    - "Did the final change centralize that parsing in the shared helper?"
+
+environment:
+  network: enabled
+  workspace_mode: temp-dir
+
+timeout: 120

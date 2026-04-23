@@ -1,0 +1,10 @@
+status: not_implemented
+example:
+  id: python-bugfix-pattern
+  train_tasks:
+    - task-001
+    - task-002
+    - task-003
+  holdout_tasks:
+    - task-004
+    - task-005

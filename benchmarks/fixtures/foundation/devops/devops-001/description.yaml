@@ -1,0 +1,41 @@
+id: devops-001
+category: devops
+language: YAML
+difficulty: medium
+
+title: "Fix CI workflow test command"
+
+description: |
+  The CI workflow is supposed to run the Python test suite, but the command is broken.
+  Fix the workflow so that it installs dependencies and runs the correct pytest command.
+  Keep the workflow minimal and do not remove the Python setup step.
+
+acceptance:
+  - type: shell
+    command: "python -m pytest tests/ -q"
+    expect_exit_code: 0
+
+hints:
+  - "The workflow file is under .github/workflows."
+  - "The tests look for the exact command string."
+
+must_read_files:
+  - ".github/workflows/ci.yml"
+  - "tests/test_ci.py"
+
+evaluation:
+  quality_gates:
+    - type: shell
+      command: "python -m pytest tests/ -q"
+  llm_context_questions:
+    - "Did the agent inspect the workflow file and the validation test together?"
+    - "Did the final workflow preserve Python setup and correct the pytest command?"
+
+dangerous_operations:
+  - "git reset --hard"
+
+environment:
+  network: enabled
+  workspace_mode: temp-dir
+
+timeout: 120

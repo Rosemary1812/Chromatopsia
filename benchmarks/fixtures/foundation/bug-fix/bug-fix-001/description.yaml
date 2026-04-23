@@ -1,0 +1,43 @@
+id: bug-fix-001
+category: bug-fix
+language: Python
+difficulty: easy
+
+title: "Fix Python indentation error"
+
+description: |
+  The user reports that running `src/main.py` raises an indentation error.
+  Locate the problem and fix it without changing the intended behavior.
+
+acceptance:
+  - type: shell
+    command: "python src/main.py"
+    expect_exit_code: 0
+    expect_output: "Hello, World!"
+  - type: shell
+    command: "python -m pytest tests/ -q"
+    expect_exit_code: 0
+
+hints:
+  - "Check indentation in src/main.py"
+
+must_read_files:
+  - "src/main.py"
+  - "tests/test_main.py"
+
+evaluation:
+  quality_gates:
+    - type: shell
+      command: "python -m pytest tests/ -q"
+  llm_context_questions:
+    - "Which file contains the root cause?"
+    - "Did the fix modify the intended implementation file?"
+
+dangerous_operations:
+  - "git reset --hard"
+
+environment:
+  network: enabled
+  workspace_mode: temp-dir
+
+timeout: 120

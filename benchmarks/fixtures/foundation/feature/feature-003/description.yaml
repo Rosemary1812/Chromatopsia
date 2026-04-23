@@ -1,0 +1,38 @@
+id: feature-003
+category: feature
+language: Python
+difficulty: medium
+
+title: "Add prefix support to label formatter"
+
+description: |
+  The label formatter should support an optional prefix string.
+  When a prefix is provided, the final output should become `<prefix>: <label>`.
+  When the prefix is omitted, the current output must stay unchanged.
+
+acceptance:
+  - type: shell
+    command: "python -m pytest tests/ -q"
+    expect_exit_code: 0
+
+hints:
+  - "Keep the current default behavior unchanged."
+  - "Only add the prefix text when the caller provides it."
+
+must_read_files:
+  - "src/labels.py"
+  - "tests/test_labels.py"
+
+evaluation:
+  quality_gates:
+    - type: shell
+      command: "python -m pytest tests/ -q"
+  llm_context_questions:
+    - "Did the agent preserve the existing output when prefix was omitted?"
+    - "Did the final implementation format prefixed labels exactly once?"
+
+environment:
+  network: enabled
+  workspace_mode: temp-dir
+
+timeout: 120

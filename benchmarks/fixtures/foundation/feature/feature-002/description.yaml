@@ -1,0 +1,39 @@
+id: feature-002
+category: feature
+language: Python
+difficulty: medium
+
+title: "Add optional footer support to summary builder"
+
+description: |
+  The summary builder already formats a title and body.
+  Extend it to accept an optional footer string.
+  When a footer is present, it should appear after the body separated by a blank line.
+  When the footer is missing, the current output must remain unchanged.
+
+acceptance:
+  - type: shell
+    command: "python -m pytest tests/ -q"
+    expect_exit_code: 0
+
+hints:
+  - "Keep the existing title/body format stable."
+  - "Only add footer output when the caller provides it."
+
+must_read_files:
+  - "src/summary_builder.py"
+  - "tests/test_summary_builder.py"
+
+evaluation:
+  quality_gates:
+    - type: shell
+      command: "python -m pytest tests/ -q"
+  llm_context_questions:
+    - "Did the agent preserve the existing title/body format while adding footer support?"
+    - "Did the final implementation skip footer rendering when the field was missing?"
+
+environment:
+  network: enabled
+  workspace_mode: temp-dir
+
+timeout: 120

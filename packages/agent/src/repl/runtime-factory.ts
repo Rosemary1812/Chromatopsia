@@ -1,4 +1,4 @@
-import type { ProviderConfig, ProviderType, RuntimeSink } from '../foundation/types.js';
+import type { ProviderConfig, ProviderType, RuntimeEvent, RuntimeSink } from '../foundation/types.js';
 import { createProvider, normalizeProviderType, resolveProviderConfig } from '../foundation/llm/index.js';
 import { load_config } from '../config/loader.js';
 import { SessionManager } from '../session/manager.js';
@@ -55,8 +55,41 @@ export async function create_agent_runtime_impl(
   const isDebug = logLevel === 'debug';
   const runtimeSink: RuntimeSink = runtime ?? { emit: () => {} };
   const runtimeMetadata = { agentId, agentRole };
+  let trace_logger: TraceLogger | null = null;
+  const handleRuntimeEvent = (runtimeEvent: RuntimeEvent) => {
+    if (trace_logger) {
+      switch (runtimeEvent.type) {
+        case 'turn_started':
+          trace_logger.startTurn(runtimeEvent.turnId, runtimeEvent.text, provider.get_model());
+          break;
+        case 'tool_started':
+          trace_logger.recordToolStart(runtimeEvent.turnId, runtimeEvent.toolCall);
+          break;
+        case 'tool_finished':
+          trace_logger.recordToolEnd(runtimeEvent.turnId, runtimeEvent.toolCall.id, runtimeEvent.result);
+          break;
+        case 'turn_completed':
+          void trace_logger.completeTurn(
+            runtimeEvent.turnId,
+            runtimeEvent.content,
+            runtimeEvent.finishReason ?? 'stop',
+            runtimeEvent.tokenUsage,
+          );
+          break;
+        case 'error':
+          if ('turnId' in runtimeEvent && typeof runtimeEvent.turnId === 'string') {
+            void trace_logger.recordError(runtimeEvent.turnId, runtimeEvent.message);
+          }
+          break;
+        default:
+          break;
+      }
+    }
+
+    runtimeSink.emit(runtimeEvent);
+  };
   const emitRuntime = (event: RuntimeEventInput) => {
-    runtimeSink.emit(createRuntimeEvent(event, runtimeMetadata));
+    handleRuntimeEvent(createRuntimeEvent(event, runtimeMetadata));
   };
 
   register_all_tools();
@@ -122,7 +155,7 @@ export async function create_agent_runtime_impl(
   });
 
   // P0-2: Trace 持久化 — 初始化 TraceLogger
-  const trace_logger = new TraceLogger(storagePaths.logsDir, session.id);
+  trace_logger = new TraceLogger(storagePaths.logsDir, session.id);
   await trace_logger.init();
 
   const skill_reg = new SkillRegistry();
@@ -171,6 +204,10 @@ export async function create_agent_runtime_impl(
     session,
     working_directory: working_dir,
   };
+  const instrumentedRuntime: RuntimeSink = {
+    emit: handleRuntimeEvent,
+    requestApproval: runtimeSink.requestApproval,
+  };
 
   const handleLearningCommand = createLearningCommandHandler({
     skillStore: skill_store,
@@ -185,7 +222,7 @@ export async function create_agent_runtime_impl(
     approvalHook: approval_hook,
     toolContext: tool_context,
     isDebug,
-    runtime: runtimeSink,
+    runtime: instrumentedRuntime,
     runtimeMetadata,
     emitRuntime,
     slashHandler: slash_handler,

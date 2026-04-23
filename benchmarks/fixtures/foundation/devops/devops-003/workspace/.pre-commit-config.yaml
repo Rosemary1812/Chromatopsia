@@ -1,0 +1,7 @@
+repos:
+  - repo: local
+    hooks:
+      - id: python-tests
+        name: python-tests
+        entry: pytest
+        language: system

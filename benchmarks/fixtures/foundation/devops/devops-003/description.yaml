@@ -1,0 +1,40 @@
+id: devops-003
+category: devops
+language: YAML
+difficulty: medium
+
+title: "Fix pre-commit config hook command"
+
+description: |
+  The pre-commit configuration should run the Python test suite, but the hook command is wrong.
+  Fix the hook entry while preserving the repo and hook name.
+
+acceptance:
+  - type: shell
+    command: "python -m pytest tests/ -q"
+    expect_exit_code: 0
+
+hints:
+  - "The tests assert both the hook name and the command string."
+  - "Do not replace the hook with a different tool."
+
+must_read_files:
+  - ".pre-commit-config.yaml"
+  - "tests/test_precommit.py"
+
+evaluation:
+  quality_gates:
+    - type: shell
+      command: "python -m pytest tests/ -q"
+  llm_context_questions:
+    - "Did the agent inspect the pre-commit config and the validation test together?"
+    - "Did the final change preserve the existing hook while correcting the test command?"
+
+dangerous_operations:
+  - "git clean -fdx"
+
+environment:
+  network: enabled
+  workspace_mode: temp-dir
+
+timeout: 120

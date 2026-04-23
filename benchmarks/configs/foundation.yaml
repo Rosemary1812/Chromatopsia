@@ -1,0 +1,74 @@
+suite: foundation
+
+run:
+  name: foundation-default
+  description: Chromatopsia foundation benchmark default configuration
+  generate_run_id: true
+  random_seed: 42
+
+model:
+  provider: anthropic
+  name: MiniMax-M2.5-highspeed
+  temperature: 0
+  max_tokens: 8192
+
+runtime:
+  network: enabled
+  workspace_mode: temp-dir
+  max_concurrency: 1
+  per_task_timeout_sec: 180
+  allow_writes_outside_workspace: false
+
+selection:
+  categories:
+    - bug-fix
+    - feature
+    - refactor
+    - devops
+  include_tasks: []
+  exclude_tasks: []
+
+paths:
+  fixtures_root: benchmarks/fixtures/foundation
+  runs_root: benchmarks/runs
+  reports_root: benchmarks/reports
+
+scoring:
+  enabled_metrics:
+    - B1
+    - B2
+    - B3
+    - B4
+    - B5
+    - B6
+  weights:
+    B1: 0.25
+    B2: 0.20
+    B3: 0.15
+    B4: 0.15
+    B5: 0.15
+    B6: 0.10
+  cost_weights:
+    tool_calls: 0.35
+    duration_ms: 0.30
+    token_usage: 0.20
+    redundant_reads: 0.15
+
+judge:
+  context:
+    provider: anthropic
+    model: MiniMax-M2.5-highspeed
+    prompt_file: benchmarks/configs/judge/context-use.prompt.md
+  compression:
+    provider: anthropic
+    model: MiniMax-M2.5-highspeed
+    prompt_file: benchmarks/configs/judge/compression.prompt.md
+
+trace:
+  format: jsonl
+  record_tool_calls: true
+  record_file_reads: true
+  record_file_writes: true
+  record_acceptance_checks: true
+  record_token_usage: true
+  record_approval_events: true

@@ -1,0 +1,6 @@
+status: not_implemented
+scope: todo_only
+notes:
+  - Skill Learning remains isolated from foundation benchmarking.
+  - Keep directory and config skeleton only.
+  - Do not wire this config into any runnable command yet.

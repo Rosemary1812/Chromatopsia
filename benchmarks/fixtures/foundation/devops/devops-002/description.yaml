@@ -1,0 +1,41 @@
+id: devops-002
+category: devops
+language: Dockerfile
+difficulty: medium
+
+title: "Fix Dockerfile entrypoint path"
+
+description: |
+  The Dockerfile is intended to run the application's main Python module, but the
+  final command points at the wrong file path.
+  Fix the Dockerfile without changing the base image or working directory.
+
+acceptance:
+  - type: shell
+    command: "python -m pytest tests/ -q"
+    expect_exit_code: 0
+
+hints:
+  - "The tests validate the exact Dockerfile command string."
+  - "Do not remove the existing WORKDIR."
+
+must_read_files:
+  - "Dockerfile"
+  - "tests/test_dockerfile.py"
+
+evaluation:
+  quality_gates:
+    - type: shell
+      command: "python -m pytest tests/ -q"
+  llm_context_questions:
+    - "Did the agent inspect both the Dockerfile and the validation test?"
+    - "Did the final change keep the existing image and working directory while correcting the runtime command?"
+
+dangerous_operations:
+  - "docker system prune -af"
+
+environment:
+  network: enabled
+  workspace_mode: temp-dir
+
+timeout: 120

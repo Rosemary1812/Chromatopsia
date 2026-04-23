@@ -225,6 +225,12 @@ export class AnthropicProvider implements LLMProvider {
         reasoning: reasoning || undefined,
         tool_calls: toolCalls.length > 0 ? toolCalls : undefined,
         finish_reason: toolCalls.length > 0 ? 'tool_use' : 'stop',
+        token_usage: {
+          input: usage?.input_tokens ?? 0,
+          output: usage?.output_tokens ?? 0,
+          cache_creation: usage?.cache_creation_input_tokens ?? 0,
+          cache_read: usage?.cache_read_input_tokens ?? 0,
+        },
       };
     } catch (error) {
       if (error instanceof Anthropic.APIError) {
@@ -383,6 +389,12 @@ export class AnthropicProvider implements LLMProvider {
         reasoning: fullReasoning || undefined,
         tool_calls: toolCalls.length > 0 ? toolCalls : undefined,
         finish_reason: toolCalls.length > 0 ? 'tool_use' : 'stop',
+        token_usage: {
+          input: usage?.input_tokens ?? 0,
+          output: usage?.output_tokens ?? 0,
+          cache_creation: usage?.cache_creation_input_tokens ?? 0,
+          cache_read: usage?.cache_read_input_tokens ?? 0,
+        },
       };
     } catch (error) {
       if (error instanceof Anthropic.APIError) {

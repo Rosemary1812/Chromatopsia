@@ -65,6 +65,12 @@ Reflection 重构.md
 Skill 重构.md
 
 # Root-level documentation & logs (do not commit)
+架构.md
+BENCHMARK-TODO.md
+EVALUATION-2.md
+# Benchmark artifacts (generated on each run)
+benchmarks/runs/
+benchmarks/reports/
 CLI产品化差距分析.md
 CODE_REVIEW.md
 PR_SUMMARY.md

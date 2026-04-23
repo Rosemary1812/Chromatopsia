@@ -107,6 +107,7 @@ export class OpenAIProvider implements LLMProvider {
       reasoning: fullReasoning || undefined,
       tool_calls: finalizedToolCalls.length > 0 ? finalizedToolCalls : undefined,
       finish_reason: finalizedToolCalls.length > 0 ? 'tool_use' : finishReason,
+      token_usage: undefined,
     };
   }
 
@@ -216,6 +217,10 @@ export class OpenAIProvider implements LLMProvider {
       reasoning: this.extractReasoning(message as unknown as Record<string, unknown>) || undefined,
       tool_calls: toolCalls?.length ? toolCalls : undefined,
       finish_reason: toolCalls?.length ? 'tool_use' : 'stop',
+      token_usage: {
+        input: response.usage?.prompt_tokens ?? 0,
+        output: response.usage?.completion_tokens ?? 0,
+      },
     };
   }
 }

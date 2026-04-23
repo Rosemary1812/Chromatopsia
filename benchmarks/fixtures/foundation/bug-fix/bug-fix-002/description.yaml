@@ -1,0 +1,38 @@
+id: bug-fix-002
+category: bug-fix
+language: Python
+difficulty: easy
+
+title: "Fix off-by-one in chunk splitting"
+
+description: |
+  The utility that splits a sequence into fixed-size chunks drops the final chunk
+  when the list length is not evenly divisible by the chunk size.
+  Fix the implementation without changing the function signature.
+
+acceptance:
+  - type: shell
+    command: "python -m pytest tests/ -q"
+    expect_exit_code: 0
+
+hints:
+  - "Read the implementation and its tests together."
+  - "The bug appears when there is a remainder."
+
+must_read_files:
+  - "src/chunking.py"
+  - "tests/test_chunking.py"
+
+evaluation:
+  quality_gates:
+    - type: shell
+      command: "python -m pytest tests/ -q"
+  llm_context_questions:
+    - "Did the agent identify that only the final partial chunk was being dropped?"
+    - "Did the final fix preserve the existing behavior for evenly divisible inputs?"
+
+environment:
+  network: enabled
+  workspace_mode: temp-dir
+
+timeout: 120

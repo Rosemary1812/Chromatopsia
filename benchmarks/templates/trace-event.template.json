@@ -1,0 +1,7 @@
+{
+  "ts": "2026-04-21T10:30:00.000Z",
+  "run_id": "2026-04-21T10-30-00Z",
+  "suite": "foundation",
+  "task_id": "bug-fix-001",
+  "event_type": "task_started"
+}

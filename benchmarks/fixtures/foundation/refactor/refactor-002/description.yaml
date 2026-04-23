@@ -1,0 +1,40 @@
+id: refactor-002
+category: refactor
+language: Python
+difficulty: medium
+
+title: "Extract shared slug helper"
+
+description: |
+  Two modules currently implement the same slug generation logic inline.
+  Refactor them to use a shared helper so future changes only need to happen in one place.
+  Do not change the external output format.
+
+acceptance:
+  - type: shell
+    command: "python -m pytest tests/ -q"
+    expect_exit_code: 0
+
+hints:
+  - "The shared helper file already exists."
+  - "Keep all existing output strings unchanged."
+
+must_read_files:
+  - "src/page_titles.py"
+  - "src/links.py"
+  - "src/slug_utils.py"
+  - "tests/test_slug_refactor.py"
+
+evaluation:
+  quality_gates:
+    - type: shell
+      command: "python -m pytest tests/ -q"
+  llm_context_questions:
+    - "Did the agent identify the duplicated slug logic across both modules?"
+    - "Did the final change centralize the slug logic in the shared helper?"
+
+environment:
+  network: enabled
+  workspace_mode: temp-dir
+
+timeout: 120

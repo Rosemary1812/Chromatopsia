@@ -11,6 +11,9 @@ import * as learningWorkerModule from '../../src/learning/worker.js';
 import * as executorModule from '../../src/repl/executor.js';
 import * as slashModule from '../../src/repl/slash.js';
 import * as storagePathsModule from '../../src/storage/paths.js';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 
 function create_mock_session(): Session {
   const messages: Message[] = [];
@@ -50,6 +53,7 @@ function create_mock_provider(): LLMProvider {
         content: resp.content ?? '',
         tool_calls: resp.tool_calls,
         finish_reason: resp.finish_reason ?? (resp.tool_calls?.length ? 'tool_use' : 'stop'),
+        token_usage: resp.token_usage,
       };
     }),
     get_model: () => 'mock-model',
@@ -163,10 +167,10 @@ describe('repl/runtime', () => {
       runtime: { emit: vi.fn() },
     });
 
-    expect(hooksApprovalModule.ApprovalHook).toHaveBeenCalledWith({
+    expect(hooksApprovalModule.ApprovalHook).toHaveBeenCalledWith(expect.objectContaining({
       auto_approve_safe: false,
       timeout_ms: 42000,
-    });
+    }));
   });
 
   it('maps runtime events back to AgentEvents callbacks', async () => {
@@ -254,6 +258,55 @@ describe('repl/runtime', () => {
     expect(events.some((event) => event.type === 'assistant_message')).toBe(true);
     expect(events.some((event) => event.type === 'turn_completed')).toBe(true);
     expect(events.every((event) => event.agentId === 'main')).toBe(true);
+  });
+
+  it('records token usage into trace logger for completed turns', async () => {
+    const session = create_mock_session();
+    const provider = create_mock_provider();
+    mock_llm_responses = [{
+      content: 'Hello!',
+      finish_reason: 'stop',
+      token_usage: {
+        input: 123,
+        output: 45,
+        cache_creation: 67,
+        cache_read: 8,
+      },
+    }];
+    setup_common_mocks(session, provider);
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'runtime-token-test-'));
+    vi.spyOn(storagePathsModule, 'resolveStoragePaths').mockReturnValue({
+      projectRoot: tempRoot,
+      root: path.join(tempRoot, '.chromatopsia'),
+      sessionsDir: path.join(tempRoot, '.chromatopsia', 'sessions'),
+      sessionsIndexPath: path.join(tempRoot, '.chromatopsia', 'sessions', 'index.json'),
+      learningDir: path.join(tempRoot, '.chromatopsia', 'learning'),
+      turnEventsPath: path.join(tempRoot, '.chromatopsia', 'learning', 'turn-events.jsonl'),
+      learningStatePath: path.join(tempRoot, '.chromatopsia', 'learning', 'state.json'),
+      memoryDir: path.join(tempRoot, '.chromatopsia', 'memory'),
+      memoryIndexPath: path.join(tempRoot, '.chromatopsia', 'memory', 'MEMORY.md'),
+      skillsDir: path.join(tempRoot, '.chromatopsia', 'skills'),
+      skillsIndexPath: path.join(tempRoot, '.chromatopsia', 'skills', 'index.json'),
+      userSkillsDir: path.join(tempRoot, '.chromatopsia', 'skills', 'user'),
+      draftSkillsDir: path.join(tempRoot, '.chromatopsia', 'skills', 'drafts'),
+      logsDir: path.join(tempRoot, '.chromatopsia', 'logs'),
+      builtinSkillsRoots: [path.join(tempRoot, 'skills', 'builtin')],
+    } as ReturnType<typeof storagePathsModule.resolveStoragePaths>);
+
+    const agentRuntime = await create_agent_runtime({
+      working_dir: tempRoot,
+      provider: 'anthropic',
+      config: { api_key: 'test' },
+      runtime: { emit: vi.fn() },
+    });
+
+    await agentRuntime.handle_user_input('hello');
+
+    const tokenStats = await agentRuntime.traceLogger.getTokenStats();
+    expect(tokenStats.total_input).toBe(123);
+    expect(tokenStats.total_output).toBe(45);
+    expect(tokenStats.total_cache_creation).toBe(67);
+    expect(tokenStats.total_cache_read).toBe(8);
   });
 
   it('converts unexpected turn-router errors into runtime error events instead of throwing', async () => {

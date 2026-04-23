@@ -1,0 +1,38 @@
+id: bug-fix-003
+category: bug-fix
+language: Python
+difficulty: easy
+
+title: "Fix incorrect default separator"
+
+description: |
+  The CSV line builder should join values with commas by default, but a recent
+  change made it use semicolons instead.
+  Fix the implementation without changing the function signature.
+
+acceptance:
+  - type: shell
+    command: "python -m pytest tests/ -q"
+    expect_exit_code: 0
+
+hints:
+  - "The tests cover both the default separator and a custom separator."
+  - "Only the default behavior is wrong."
+
+must_read_files:
+  - "src/csv_line.py"
+  - "tests/test_csv_line.py"
+
+evaluation:
+  quality_gates:
+    - type: shell
+      command: "python -m pytest tests/ -q"
+  llm_context_questions:
+    - "Did the agent identify that only the default separator behavior was broken?"
+    - "Did the final change preserve explicit custom separators?"
+
+environment:
+  network: enabled
+  workspace_mode: temp-dir
+
+timeout: 120

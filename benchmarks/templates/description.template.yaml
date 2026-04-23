@@ -1,0 +1,12 @@
+id: task-id
+category: bug-fix
+language: Python
+difficulty: easy
+title: "Task title"
+description: |
+  Describe the task here.
+acceptance:
+  - type: shell
+    command: "python -m pytest tests/ -q"
+    expect_exit_code: 0
+timeout: 120

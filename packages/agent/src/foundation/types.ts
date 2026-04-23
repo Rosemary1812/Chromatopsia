@@ -78,6 +78,12 @@ export interface ChatResponse {
   tool_calls?: ToolCall[];
   reasoning?: string;
   finish_reason: 'stop' | 'tool_use';
+  token_usage?: {
+    input?: number;
+    output?: number;
+    cache_creation?: number;
+    cache_read?: number;
+  };
 }
 
 export interface StreamEventBase {
@@ -273,6 +279,13 @@ export interface RuntimeTurnCompletedEvent extends RuntimeEventBase {
   type: 'turn_completed';
   turnId: string;
   content: string;
+  finishReason?: 'stop' | 'tool_use';
+  tokenUsage?: {
+    input?: number;
+    output?: number;
+    cache_creation?: number;
+    cache_read?: number;
+  };
 }
 
 export type RuntimeEvent =

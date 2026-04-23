@@ -34,6 +34,7 @@ export class TraceLogger {
   private sessionLogPath: string;
   private turnBuffer: Map<string, Partial<TurnTrace>> = new Map();
   private turnCounter: number = 0;
+  private pendingWrites: Set<Promise<void>> = new Set();
 
   constructor(logsDir: string, sessionId: string) {
     this.logsDir = logsDir;
@@ -48,6 +49,20 @@ export class TraceLogger {
     } catch (err) {
       // Silent fail - continue even if logging fails
     }
+  }
+
+  private trackWrite<T>(promise: Promise<T>): Promise<T> {
+    const tracked = promise.finally(() => {
+      this.pendingWrites.delete(trackedVoid);
+    });
+    const trackedVoid = tracked.then(() => undefined);
+    this.pendingWrites.add(trackedVoid);
+    return tracked;
+  }
+
+  private async flushPendingWrites(): Promise<void> {
+    if (this.pendingWrites.size === 0) return;
+    await Promise.all([...this.pendingWrites]);
   }
 
   /**
@@ -127,7 +142,7 @@ export class TraceLogger {
     };
 
     try {
-      await fs.appendFile(this.sessionLogPath, JSON.stringify(completeTurn) + '\n');
+      await this.trackWrite(fs.appendFile(this.sessionLogPath, JSON.stringify(completeTurn) + '\n'));
     } catch (err) {
       // Silent fail - don't break execution
     }
@@ -159,6 +174,7 @@ export class TraceLogger {
    */
   async queryAllTurns(): Promise<TurnTrace[]> {
     try {
+      await this.flushPendingWrites();
       const content = await fs.readFile(this.sessionLogPath, 'utf-8');
       return content
         .split('\n')
@@ -186,6 +202,7 @@ export class TraceLogger {
     total_cache_creation: number;
     total_cache_read: number;
   }> {
+    await this.flushPendingWrites();
     const turns = await this.queryAllTurns();
     return {
       total_input: turns.reduce((sum, t) => sum + (t.token_estimate?.input_tokens || 0), 0),
@@ -199,6 +216,7 @@ export class TraceLogger {
    * 统计工具调用
    */
   async getToolStats(): Promise<Record<string, { count: number; total_duration_ms: number; avg_duration_ms: number }>> {
+    await this.flushPendingWrites();
     const turns = await this.queryAllTurns();
     const toolStats: Record<string, { count: number; total_duration: number; calls: number[] }> = {};
 

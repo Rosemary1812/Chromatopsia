@@ -1,0 +1,53 @@
+id: feature-001
+category: feature
+language: Python
+difficulty: medium
+
+title: "Add release note metadata support"
+
+description: |
+  The team wants the release note builder to support optional metadata lines.
+  Update the implementation so that the generated release note can include:
+  a version line, an owner line, and a tags line when those fields are present.
+  Preserve the existing title/body format.
+  The user already clarified that:
+  1. the title must stay on the first line
+  2. metadata lines belong between the title and the body
+  3. tags should be comma-separated
+  4. missing metadata fields should be skipped entirely
+  5. the body content must remain unchanged
+  6. do not rewrite tests to force this through
+
+acceptance:
+  - type: shell
+    command: "python -m pytest tests/ -q"
+    expect_exit_code: 0
+
+hints:
+  - "Check the release note builder implementation and its tests."
+  - "Keep the original body formatting."
+
+must_read_files:
+  - "src/release_notes.py"
+  - "tests/test_release_notes.py"
+
+evaluation:
+  quality_gates:
+    - type: shell
+      command: "python -m pytest tests/ -q"
+  llm_context_questions:
+    - "Did the agent use the implementation and test file together to infer the expected output structure?"
+    - "Did the final change preserve title and body placement while adding metadata lines?"
+  compression_key_facts:
+    - "title stays on the first line"
+    - "metadata lines go between title and body"
+    - "tags are comma-separated"
+    - "missing metadata fields must be skipped"
+    - "body content must remain unchanged"
+
+environment:
+  network: enabled
+  workspace_mode: temp-dir
+  session_compress_threshold: 50
+
+timeout: 120

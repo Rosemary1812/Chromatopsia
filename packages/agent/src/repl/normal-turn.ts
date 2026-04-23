@@ -47,6 +47,31 @@ interface NormalTurnLoopState {
   lastToolOutputSignature: string;
 }
 
+interface AggregatedTokenUsage {
+  input: number;
+  output: number;
+  cache_creation: number;
+  cache_read: number;
+}
+
+function mergeTokenUsage(
+  current: AggregatedTokenUsage,
+  next?: {
+    input?: number;
+    output?: number;
+    cache_creation?: number;
+    cache_read?: number;
+  },
+): AggregatedTokenUsage {
+  if (!next) return current;
+  return {
+    input: current.input + (next.input ?? 0),
+    output: current.output + (next.output ?? 0),
+    cache_creation: current.cache_creation + (next.cache_creation ?? 0),
+    cache_read: current.cache_read + (next.cache_read ?? 0),
+  };
+}
+
 class StreamTimeoutError extends Error {
   constructor() {
     super('Stream timeout (60s) — server did not respond');
@@ -238,6 +263,12 @@ export async function handle_normal_turn(
   };
   const executedToolCalls: ToolCall[] = [];
   const executedToolResults: ToolResult[] = [];
+  let aggregatedTokenUsage: AggregatedTokenUsage = {
+    input: 0,
+    output: 0,
+    cache_creation: 0,
+    cache_read: 0,
+  };
 
   let ctx = prepareTurnContext(session, taskType, skillRegistry, extraSystemMessages);
   const emitRuntime = (event: RuntimeEventInput) => {
@@ -246,13 +277,13 @@ export async function handle_normal_turn(
 
   while (true) {
     round++;
-    if (round > MAX_TOOL_ROUNDS) {
-      const msg = `Tool loop exceeded max rounds (${MAX_TOOL_ROUNDS})`;
-      emitRuntime({ type: 'error', message: msg });
-      session.add_message({ role: 'assistant', content: `Error: ${msg}` });
-      emitRuntime({ type: 'turn_completed', turnId, content: `Error: ${msg}` });
-      return { toolCalls: executedToolCalls, toolResults: executedToolResults };
-    }
+      if (round > MAX_TOOL_ROUNDS) {
+        const msg = `Tool loop exceeded max rounds (${MAX_TOOL_ROUNDS})`;
+        emitRuntime({ type: 'error', message: msg });
+        session.add_message({ role: 'assistant', content: `Error: ${msg}` });
+        emitRuntime({ type: 'turn_completed', turnId, content: `Error: ${msg}`, finishReason: 'stop' });
+        return { toolCalls: executedToolCalls, toolResults: executedToolResults };
+      }
 
     if (needs_compression(session.messages, DEFAULT_COMPRESSION_CONFIG)) {
       await session.compact();
@@ -272,7 +303,7 @@ export async function handle_normal_turn(
         const msg = 'LLM stream returned no response (possible server error)';
         emitRuntime({ type: 'error', message: msg });
         session.add_message({ role: 'assistant', content: `Error: ${msg}` });
-        emitRuntime({ type: 'turn_completed', turnId, content: `Error: ${msg}` });
+        emitRuntime({ type: 'turn_completed', turnId, content: `Error: ${msg}`, finishReason: 'stop' });
         return { toolCalls: executedToolCalls, toolResults: executedToolResults };
       }
 
@@ -283,11 +314,18 @@ export async function handle_normal_turn(
         isDebug,
         emitRuntime,
       });
+      aggregatedTokenUsage = mergeTokenUsage(aggregatedTokenUsage, llm_response.token_usage);
 
       if (!toolCalls || toolCalls.length === 0) {
         session.add_message({ role: 'assistant', content: finalContent });
         emitRuntime({ type: 'assistant_message', turnId, content: finalContent });
-        emitRuntime({ type: 'turn_completed', turnId, content: finalContent });
+        emitRuntime({
+          type: 'turn_completed',
+          turnId,
+          content: finalContent,
+          finishReason: llm_response.finish_reason,
+          tokenUsage: aggregatedTokenUsage,
+        });
         return { toolCalls: executedToolCalls, toolResults: executedToolResults };
       }
 
@@ -326,7 +364,7 @@ export async function handle_normal_turn(
         const msg = 'Tool loop stopped: repeated identical tool calls/results with no progress';
         emitRuntime({ type: 'error', message: msg });
         session.add_message({ role: 'assistant', content: `Error: ${msg}` });
-        emitRuntime({ type: 'turn_completed', turnId, content: `Error: ${msg}` });
+        emitRuntime({ type: 'turn_completed', turnId, content: `Error: ${msg}`, finishReason: 'stop' });
         return { toolCalls: executedToolCalls, toolResults: executedToolResults };
       }
       emitRuntime({ type: 'tool_batch_finished', turnId, toolCalls, results });
@@ -365,7 +403,7 @@ export async function handle_normal_turn(
       const formatted = formatLlmErrorMessage(err);
       emitRuntime({ type: 'error', message: formatted.logMessage });
       session.add_message({ role: 'assistant', content: formatted.userMessage });
-      emitRuntime({ type: 'turn_completed', turnId, content: formatted.userMessage });
+      emitRuntime({ type: 'turn_completed', turnId, content: formatted.userMessage, finishReason: 'stop' });
       return { toolCalls: executedToolCalls, toolResults: executedToolResults };
     }
   }

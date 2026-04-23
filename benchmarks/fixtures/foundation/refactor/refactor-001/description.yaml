@@ -1,0 +1,44 @@
+id: refactor-001
+category: refactor
+language: Python
+difficulty: medium
+
+title: "Extract shared text normalization helper"
+
+description: |
+  Two modules currently duplicate the same text normalization logic.
+  Refactor them to use a shared helper without changing external behavior.
+  Keep the existing output stable and avoid broad rewrites.
+
+acceptance:
+  - type: shell
+    command: "python -m pytest tests/ -q"
+    expect_exit_code: 0
+  - type: shell
+    command: "python -c \"from src.text_utils import normalize_text; print(normalize_text('  Hello   WORLD  '))\""
+    expect_exit_code: 0
+    expect_output: "hello world"
+
+hints:
+  - "The duplicated normalization logic appears in two modules."
+  - "A shared helper file already exists."
+
+must_read_files:
+  - "src/formatter.py"
+  - "src/search.py"
+  - "src/text_utils.py"
+  - "tests/test_refactor.py"
+
+evaluation:
+  quality_gates:
+    - type: shell
+      command: "python -m pytest tests/ -q"
+  llm_context_questions:
+    - "Did the agent identify the duplicated normalization logic across the two modules?"
+    - "Did the final change centralize normalization in the shared helper?"
+
+environment:
+  network: enabled
+  workspace_mode: temp-dir
+
+timeout: 120
