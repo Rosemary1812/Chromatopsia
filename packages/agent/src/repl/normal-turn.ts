@@ -39,6 +39,12 @@ export interface HandleNormalTurnOptions {
 export interface NormalTurnExecutionSummary {
   toolCalls: ToolCall[];
   toolResults: ToolResult[];
+  toolCallCount: number;
+  usedSkillIds: string[];
+  skillLoads: string[];
+  errorCount: number;
+  finalOutcome: 'success' | 'failed' | 'unknown';
+  taskComplexitySignal: 'simple' | 'complex';
 }
 
 interface NormalTurnLoopState {
@@ -234,6 +240,37 @@ function detectLoopStall(
   };
 }
 
+function skillIdsFromToolCalls(toolCalls: ToolCall[]): string[] {
+  const ids = new Set<string>();
+  for (const toolCall of toolCalls) {
+    if (toolCall.name !== 'Skill') continue;
+    const name = toolCall.arguments.name;
+    if (typeof name === 'string' && name.trim()) {
+      ids.add(name.trim());
+    }
+  }
+  return [...ids];
+}
+
+function buildExecutionSummary(
+  toolCalls: ToolCall[],
+  toolResults: ToolResult[],
+  finalOutcome: NormalTurnExecutionSummary['finalOutcome'],
+): NormalTurnExecutionSummary {
+  const usedSkillIds = skillIdsFromToolCalls(toolCalls);
+  const errorCount = toolResults.filter((result) => !result.success).length;
+  return {
+    toolCalls,
+    toolResults,
+    toolCallCount: toolCalls.length,
+    usedSkillIds,
+    skillLoads: usedSkillIds,
+    errorCount,
+    finalOutcome,
+    taskComplexitySignal: toolCalls.length >= 5 ? 'complex' : 'simple',
+  };
+}
+
 /**
  * Handle a normal (non-skill) user turn.
  * User input -> LLM -> tool execution -> repeat until no tool_calls -> finish.
@@ -282,7 +319,7 @@ export async function handle_normal_turn(
         emitRuntime({ type: 'error', message: msg });
         session.add_message({ role: 'assistant', content: `Error: ${msg}` });
         emitRuntime({ type: 'turn_completed', turnId, content: `Error: ${msg}`, finishReason: 'stop' });
-        return { toolCalls: executedToolCalls, toolResults: executedToolResults };
+        return buildExecutionSummary(executedToolCalls, executedToolResults, 'failed');
       }
 
     if (needs_compression(session.messages, DEFAULT_COMPRESSION_CONFIG)) {
@@ -304,7 +341,7 @@ export async function handle_normal_turn(
         emitRuntime({ type: 'error', message: msg });
         session.add_message({ role: 'assistant', content: `Error: ${msg}` });
         emitRuntime({ type: 'turn_completed', turnId, content: `Error: ${msg}`, finishReason: 'stop' });
-        return { toolCalls: executedToolCalls, toolResults: executedToolResults };
+        return buildExecutionSummary(executedToolCalls, executedToolResults, 'failed');
       }
 
       const { finalContent, toolCalls } = await finalizeAssistantResponse({
@@ -326,7 +363,7 @@ export async function handle_normal_turn(
           finishReason: llm_response.finish_reason,
           tokenUsage: aggregatedTokenUsage,
         });
-        return { toolCalls: executedToolCalls, toolResults: executedToolResults };
+        return buildExecutionSummary(executedToolCalls, executedToolResults, 'success');
       }
 
       session.add_message({
@@ -365,7 +402,7 @@ export async function handle_normal_turn(
         emitRuntime({ type: 'error', message: msg });
         session.add_message({ role: 'assistant', content: `Error: ${msg}` });
         emitRuntime({ type: 'turn_completed', turnId, content: `Error: ${msg}`, finishReason: 'stop' });
-        return { toolCalls: executedToolCalls, toolResults: executedToolResults };
+        return buildExecutionSummary(executedToolCalls, executedToolResults, 'failed');
       }
       emitRuntime({ type: 'tool_batch_finished', turnId, toolCalls, results });
 
@@ -404,7 +441,7 @@ export async function handle_normal_turn(
       emitRuntime({ type: 'error', message: formatted.logMessage });
       session.add_message({ role: 'assistant', content: formatted.userMessage });
       emitRuntime({ type: 'turn_completed', turnId, content: formatted.userMessage, finishReason: 'stop' });
-      return { toolCalls: executedToolCalls, toolResults: executedToolResults };
+      return buildExecutionSummary(executedToolCalls, executedToolResults, 'failed');
     }
   }
 }

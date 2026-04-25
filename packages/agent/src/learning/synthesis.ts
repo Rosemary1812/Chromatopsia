@@ -1,5 +1,6 @@
 import type { LLMProvider, Skill, SkillDocument, SynthesisResult, TaskBufferEntry } from '../foundation/types.js';
 import { parseSkillMarkdown } from '../skills/skill-parser.js';
+import { buildLearningJudgePrompt } from './prompt.js';
 
 interface SkillLookup {
   match(task_type: string): Skill | null;
@@ -26,60 +27,15 @@ export async function synthesize_skill(
       ? skill_reg.match(input.last_task_type)
       : null;
     if (existing) {
-      existing_skill_info = `\n注意：已存在同类技能 "${existing.name}"（id=${existing.id}），请勿重复生成。`;
+      existing_skill_info = `\nExisting related Skill: "${existing.name}" (id=${existing.id}). Choose patch if this batch improves or corrects that Skill; choose skip if the existing Skill already covers the behavior well.`;
     }
   }
 
-  const prompt = `你观察到 Agent 在当前 session 中连续执行了多次同类操作但没有命中任何 Skill guidance：
-
-任务类型：${input.last_task_type ?? 'unknown'}
-操作序列：
-${buffer_summary}
-${existing_skill_info}
-
-请判断这些操作是否值得沉淀成一个 Claude Code 风格的 Skill guidance。
-
-如果不值得沉淀，请只输出 JSON：
-{"should_learn":false,"confidence":0-1,"reasoning":"简短判断理由"}
-
-如果值得沉淀，请只输出一个完整的 SKILL.md 文档，不要包裹 JSON，不要输出解释。格式必须是：
----
-id: kebab-case-skill-id
-name: 简短技能名称
-description: 何时使用这个 skill 的一句话说明
-user-invocable: true
-context: inline
-triggers:
-  - 用户可能说出的触发描述
-task_type: ${input.last_task_type ?? 'general'}
-scope: learning_draft
-enabled: false
-priority: 10
-version: 1
-updated_at: ${new Date().toISOString()}
----
-
-# 技能标题
-
-## When To Use
-说明适用场景和判断信号。
-
-## Procedure
-用自然语言描述推荐策略、必要上下文和执行顺序。不要写可执行 tool macro，不要写 \`run_shell key=value\` 这类步骤。
-
-## Pitfalls
-列出常见坑和需要避免的行为。
-
-## Verification
-说明如何验证任务完成。
-
-要求：
-1. 正文必须是 Markdown guidance，不是 JSON skill object。
-2. 不要输出 steps/pitfalls 数组，也不要要求系统重放工具调用。
-3. id 必须稳定、短小、kebab-case。
-4. description 和 triggers 应帮助模型判断何时调用 Skill tool。
-
-输出：`;
+  const prompt = buildLearningJudgePrompt({
+    lastTaskType: input.last_task_type,
+    bufferSummary: buffer_summary,
+    existingSkillInfo: existing_skill_info,
+  });
 
   const response = await provider.chat([{ role: 'user', content: prompt }]);
   return parse_synthesis_result(response.content);
@@ -93,22 +49,25 @@ export function summarize_task_buffer(buffer: TaskBufferEntry[]): string {
       const resultSummary = e.tool_results
         .map((r) => `${r.success ? 'ok' : 'fail'}:${r.output.replace(/\s+/g, ' ').trim().slice(0, 80)}`)
         .join(' | ');
-      return `[${i + 1}] ${e.task_type}: tools=${toolNames}; results=${resultSummary || '(no results)'}`;
+      const skillSignals = [
+        e.used_skill_ids?.length ? `used_skills=${e.used_skill_ids.join(',')}` : '',
+        e.matched_skill_ids?.length ? `matched_skills=${e.matched_skill_ids.join(',')}` : '',
+        e.skill_loads?.length ? `skill_loads=${e.skill_loads.join(',')}` : '',
+        e.skill_feedback && e.skill_feedback !== 'none' ? `skill_feedback=${e.skill_feedback}` : '',
+      ].filter(Boolean).join('; ');
+      const turnSignals = [
+        `tool_count=${e.tool_call_count ?? e.tool_calls.length}`,
+        `errors=${e.error_count ?? e.tool_results.filter((result) => !result.success).length}`,
+        `outcome=${e.final_outcome ?? 'unknown'}`,
+        `complexity=${e.task_complexity_signal ?? ((e.tool_call_count ?? e.tool_calls.length) >= 5 ? 'complex' : 'simple')}`,
+      ].join('; ');
+      return `[${i + 1}] ${e.task_type}: ${turnSignals}; tools=${toolNames}; results=${resultSummary || '(no results)'}${skillSignals ? `; ${skillSignals}` : ''}`;
     })
     .join('\n');
 }
 
 export function parse_synthesis_result(content: string): SynthesisResult {
   const normalized = unwrapMarkdownFence(content).trim();
-  const document = parseSkillMarkdown(normalized, DRAFT_SOURCE_PATH);
-  if (document) {
-    return {
-      should_learn: true,
-      skill: document.skill,
-      document: toSkillDocument(document),
-      rawDocument: normalized,
-    };
-  }
 
   try {
     const obj = JSON.parse(normalized) as Record<string, unknown>;
@@ -116,20 +75,39 @@ export function parse_synthesis_result(content: string): SynthesisResult {
       return { should_learn: false, skill: {}, reasoning: content };
     }
 
-    if ('should_learn' in obj) {
-      const rawDocument = typeof obj.document === 'string'
-        ? obj.document
-        : typeof obj.rawDocument === 'string'
-          ? obj.rawDocument
-          : undefined;
+    if ('decision' in obj) {
+      const decision = normalizeDecision(obj.decision);
+      const rawDocument = typeof obj.skill_markdown === 'string'
+        ? obj.skill_markdown
+        : typeof obj.document === 'string'
+          ? obj.document
+          : typeof obj.rawDocument === 'string'
+            ? obj.rawDocument
+            : undefined;
       const parsedDocument = rawDocument ? parseSkillMarkdown(rawDocument, DRAFT_SOURCE_PATH) : null;
+      const shouldLearn = (decision === 'create' || decision === 'patch') && Boolean(parsedDocument);
       return {
-        should_learn: obj.should_learn === true && Boolean(parsedDocument),
+        should_learn: shouldLearn,
+        decision,
         confidence: typeof obj.confidence === 'number' ? obj.confidence : undefined,
         reasoning: typeof obj.reasoning === 'string' ? obj.reasoning : undefined,
+        evidence: stringArray(obj.evidence),
+        risk_notes: stringArray(obj.risk_notes),
+        target_skill_id: typeof obj.target_skill_id === 'string' ? obj.target_skill_id : null,
+        patch_plan: typeof obj.patch_plan === 'string' ? obj.patch_plan : undefined,
         skill: parsedDocument?.skill ?? (isPlainObject(obj.skill) ? obj.skill as Partial<Skill> : {}),
         document: parsedDocument ? toSkillDocument(parsedDocument) : undefined,
         rawDocument,
+      };
+    }
+
+    if ('should_learn' in obj) {
+      return {
+        should_learn: false,
+        decision: 'skip',
+        confidence: typeof obj.confidence === 'number' ? obj.confidence : undefined,
+        reasoning: typeof obj.reasoning === 'string' ? obj.reasoning : undefined,
+        skill: {},
       };
     }
 
@@ -155,4 +133,13 @@ function toSkillDocument(document: SkillDocument): SkillDocument {
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function normalizeDecision(value: unknown): 'skip' | 'create' | 'patch' {
+  return value === 'create' || value === 'patch' ? value : 'skip';
+}
+
+function stringArray(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  return value.filter((entry): entry is string => typeof entry === 'string');
 }

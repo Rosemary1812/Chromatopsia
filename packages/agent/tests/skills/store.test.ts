@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdir, readFile, rm, writeFile } from 'fs/promises';
 import { resolve } from 'path';
 import { SkillStore } from '../../src/skills/store.js';
+import { parseSkillMarkdown } from '../../src/skills/skill-parser.js';
 import type { Skill } from '../../src/foundation/types.js';
 
 const TEST_DIR = resolve(process.cwd(), '.test-skill-store-temp');
@@ -239,5 +240,65 @@ Mention observed status.`;
     const rejected = await reloaded.reject_draft('draft-2');
     expect(rejected).toBe(true);
     expect(reloaded.list_drafts().some((d) => d.id === 'draft-2')).toBe(false);
+  });
+
+  it('saves and approves patch drafts without modifying the target until approval', async () => {
+    const store = new SkillStore(TEST_DIR);
+    await store.save(makeSkill({
+      id: 'existing-git-skill',
+      name: 'Existing Git Skill',
+      task_type: 'git',
+      trigger_condition: 'inspect git status',
+    }));
+
+    const patchRaw = `---
+id: existing-git-skill
+name: Existing Git Skill
+description: Use when git status needs repository risk guidance.
+user-invocable: true
+context: inline
+triggers:
+  - inspect git status
+task_type: git
+scope: learning_draft
+enabled: false
+priority: 10
+version: 1
+updated_at: 2026-04-23T00:00:00.000Z
+---
+
+# Existing Git Skill
+
+## When To Use
+Use this for git status reviews.
+
+## Procedure
+Inspect status and diffs before summarizing.
+
+## Verification
+Mention observed status and whether the working tree is clean.`;
+    const parsed = parseSkillMarkdown(patchRaw, '.chromatopsia/skills/drafts/generated/SKILL.md');
+    expect(parsed).not.toBeNull();
+
+    await store.save_patch_draft(parsed!, 'existing-git-skill', 'Add concrete verification guidance.');
+
+    const draft = store.list_drafts().find((d) => d.name === 'Existing Git Skill');
+    expect(draft).toBeTruthy();
+    const draftDocument = await store.loadDocument(draft!.id);
+    expect(draftDocument?.manifest.draft_kind).toBe('patch');
+    expect(draftDocument?.manifest.target_skill_id).toBe('existing-git-skill');
+    expect(draftDocument?.manifest.patch_plan).toBe('Add concrete verification guidance.');
+
+    const targetBefore = await store.loadDocument('existing-git-skill');
+    expect(targetBefore?.body).not.toContain('working tree is clean');
+
+    const approved = await store.approve_draft(draft!.id);
+    expect(approved?.id).toBe('existing-git-skill');
+
+    const reloaded = new SkillStore(TEST_DIR);
+    await reloaded.load();
+    const updated = await reloaded.loadDocument('existing-git-skill');
+    expect(updated?.manifest.scope).toBe('user');
+    expect(updated?.body).toContain('working tree is clean');
   });
 });

@@ -345,6 +345,9 @@ export interface SkillManifestEntry {
   updated_at: string;
   sourcePath?: string;
   source_path: string;
+  draft_kind?: 'create' | 'patch';
+  target_skill_id?: string;
+  patch_plan?: string;
 }
 
 export interface SkillDocument {
@@ -369,15 +372,28 @@ export interface TaskBufferEntry {
   task_type: string;
   session_id: string;
   timestamp: number;
+  tool_call_count?: number;
+  used_skill_ids?: string[];
+  matched_skill_ids?: string[];
+  skill_loads?: string[];
+  error_count?: number;
+  final_outcome?: 'success' | 'failed' | 'unknown';
+  task_complexity_signal?: 'simple' | 'complex';
+  skill_feedback?: 'helpful' | 'outdated' | 'incomplete' | 'wrong' | 'none';
 }
 
 export interface SynthesisResult {
   should_learn: boolean;
+  decision?: 'skip' | 'create' | 'patch';
   confidence?: number;
   skill: Partial<Skill>;
   document?: SkillDocument;
   rawDocument?: string;
   reasoning?: string;
+  evidence?: string[];
+  risk_notes?: string[];
+  target_skill_id?: string | null;
+  patch_plan?: string;
 }
 
 // --- REPL Context ---
@@ -494,6 +510,14 @@ export interface TurnEvent {
   user_input: string;
   tool_calls?: ToolCall[];
   tool_results?: ToolResult[];
+  tool_call_count?: number;
+  used_skill_ids?: string[];
+  matched_skill_ids?: string[];
+  skill_loads?: string[];
+  error_count?: number;
+  final_outcome?: 'success' | 'failed' | 'unknown';
+  task_complexity_signal?: 'simple' | 'complex';
+  skill_feedback?: 'helpful' | 'outdated' | 'incomplete' | 'wrong' | 'none';
 }
 
 // --- Agent Output Events (CLI/TUI implements these) ---

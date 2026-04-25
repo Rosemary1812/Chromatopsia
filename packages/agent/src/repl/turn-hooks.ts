@@ -7,6 +7,19 @@ import { maybeWriteMemory } from '../memory/writer.js';
 import type { SkillStore } from '../skills/store.js';
 import type { RuntimeEventInput } from './runtime.js';
 
+export interface LearningTurnPayload {
+  tool_calls?: ToolCall[];
+  tool_results?: ToolResult[];
+  tool_call_count?: number;
+  used_skill_ids?: string[];
+  matched_skill_ids?: string[];
+  skill_loads?: string[];
+  error_count?: number;
+  final_outcome?: 'success' | 'failed' | 'unknown';
+  task_complexity_signal?: 'simple' | 'complex';
+  skill_feedback?: 'helpful' | 'outdated' | 'incomplete' | 'wrong' | 'none';
+}
+
 export async function loadMemorySystemMessages(
   input: string,
   memoryIndexStore: MemoryIndexStore,
@@ -47,7 +60,7 @@ export function createLearningTurnHook(
 ): (
   taskType: string,
   userInput: string,
-  payload?: { tool_calls?: ToolCall[]; tool_results?: ToolResult[] },
+  payload?: LearningTurnPayload,
 ) => Promise<void> {
   const {
     learningWorker,
@@ -61,7 +74,7 @@ export function createLearningTurnHook(
   return async (
     taskType: string,
     userInput: string,
-    payload?: { tool_calls?: ToolCall[]; tool_results?: ToolResult[] },
+    payload?: LearningTurnPayload,
   ): Promise<void> => {
     if (!learningWorker) return;
 

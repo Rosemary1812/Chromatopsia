@@ -18,6 +18,14 @@ interface WorkerDeps {
 interface CompletedTurnPayload {
   tool_calls?: ToolCall[];
   tool_results?: ToolResult[];
+  tool_call_count?: number;
+  used_skill_ids?: string[];
+  matched_skill_ids?: string[];
+  skill_loads?: string[];
+  error_count?: number;
+  final_outcome?: 'success' | 'failed' | 'unknown';
+  task_complexity_signal?: 'simple' | 'complex';
+  skill_feedback?: 'helpful' | 'outdated' | 'incomplete' | 'wrong' | 'none';
 }
 
 function toTaskBuffer(events: TurnEvent[]): TaskBufferEntry[] {
@@ -27,6 +35,14 @@ function toTaskBuffer(events: TurnEvent[]): TaskBufferEntry[] {
     task_type: e.task_type,
     session_id: e.session_id,
     timestamp: e.timestamp,
+    tool_call_count: e.tool_call_count,
+    used_skill_ids: e.used_skill_ids,
+    matched_skill_ids: e.matched_skill_ids,
+    skill_loads: e.skill_loads,
+    error_count: e.error_count,
+    final_outcome: e.final_outcome,
+    task_complexity_signal: e.task_complexity_signal,
+    skill_feedback: e.skill_feedback,
   }));
 }
 
@@ -55,7 +71,11 @@ function isValidSkillDocumentDraft(document: SkillDocument | undefined): documen
   );
 }
 
-function normalizeDraftDocument(document: SkillDocument): SkillDocument {
+function normalizeDraftDocument(
+  document: SkillDocument,
+  draftKind: 'create' | 'patch',
+  patchMetadata?: { targetSkillId?: string; patchPlan?: string },
+): SkillDocument {
   return {
     ...document,
     manifest: {
@@ -66,6 +86,9 @@ function normalizeDraftDocument(document: SkillDocument): SkillDocument {
       enabled: false,
       priority: Math.min(document.manifest.priority, 10),
       updated_at: new Date().toISOString(),
+      draft_kind: draftKind,
+      target_skill_id: patchMetadata?.targetSkillId,
+      patch_plan: patchMetadata?.patchPlan,
     },
   };
 }
@@ -107,6 +130,14 @@ export class LearningWorker {
       user_input: userInput,
       tool_calls: normalizeToolCalls(payload.tool_calls),
       tool_results: normalizeToolResults(payload.tool_results),
+      tool_call_count: payload.tool_call_count ?? normalizeToolCalls(payload.tool_calls).length,
+      used_skill_ids: payload.used_skill_ids ?? [],
+      matched_skill_ids: payload.matched_skill_ids ?? [],
+      skill_loads: payload.skill_loads ?? payload.used_skill_ids ?? [],
+      error_count: payload.error_count ?? normalizeToolResults(payload.tool_results).filter((result) => !result.success).length,
+      final_outcome: payload.final_outcome ?? 'unknown',
+      task_complexity_signal: payload.task_complexity_signal ?? ((payload.tool_call_count ?? normalizeToolCalls(payload.tool_calls).length) >= 5 ? 'complex' : 'simple'),
+      skill_feedback: payload.skill_feedback ?? 'none',
     };
     await this.eventStore.append(event);
 
@@ -152,7 +183,7 @@ export class LearningWorker {
       this.skillRegistry,
     );
 
-    if (!synthesis.should_learn) {
+    if (!synthesis.should_learn || synthesis.decision === 'skip') {
       return { triggered: false };
     }
 
@@ -164,16 +195,34 @@ export class LearningWorker {
       return { triggered: false };
     }
 
-    const draft = normalizeDraftDocument(synthesis.document);
+    if (synthesis.decision === 'patch') {
+      const targetSkillId = typeof synthesis.target_skill_id === 'string' ? synthesis.target_skill_id : undefined;
+      const patchPlan = synthesis.patch_plan;
+      if (!targetSkillId || !patchPlan || !this.skillRegistry.getById(targetSkillId)) {
+        return { triggered: false };
+      }
+
+      const draft = normalizeDraftDocument(synthesis.document, 'patch', {
+        targetSkillId,
+        patchPlan,
+      });
+      await this.skillStore.save_patch_draft(draft, targetSkillId, patchPlan);
+      return { triggered: true, draftName: draft.manifest.name };
+    }
+
+    if (synthesis.decision !== 'create') {
+      return { triggered: false };
+    }
+
+    const draft = normalizeDraftDocument(synthesis.document, 'create');
     await this.skillStore.save_draft(draft);
     return { triggered: true, draftName: draft.manifest.name };
   }
 
   private passesConfidenceGate(confidence?: number): boolean {
     if (this.minConfidence <= 0) return true;
-    if (confidence === undefined) return true;
-    if (!Number.isFinite(confidence)) return true;
+    if (confidence === undefined) return false;
+    if (!Number.isFinite(confidence)) return false;
     return confidence >= this.minConfidence;
   }
 }
-

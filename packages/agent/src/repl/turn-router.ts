@@ -7,9 +7,7 @@ import type {
   Skill,
   SkillDocument,
   SkillManifestEntry,
-  ToolCall,
   ToolContext,
-  ToolResult,
 } from '../foundation/types.js';
 import type { RuntimeEventInput } from './runtime.js';
 import type { SkillRegistry } from '../skills/registry.js';
@@ -19,6 +17,7 @@ import type { MemoryIndexStore } from '../memory/index-store.js';
 import type { MemoryTopicStore } from '../memory/topic-store.js';
 import { handle_normal_turn } from './normal-turn.js';
 import { loadMemorySystemMessages, persistTurnMemory } from './turn-hooks.js';
+import type { LearningTurnPayload } from './turn-hooks.js';
 
 export function build_skill_slash_aliases(skill: Skill): string[] {
   const aliases = new Set<string>([`/${skill.id}`]);
@@ -168,7 +167,10 @@ export function createLearningCommandHandler(
 
         const lines = [
           `Draft skill: ${document.manifest.name}`,
+          `kind: ${document.manifest.draft_kind ?? 'create'}`,
           `id: ${document.manifest.id}`,
+          ...(document.manifest.target_skill_id ? [`target_skill_id: ${document.manifest.target_skill_id}`] : []),
+          ...(document.manifest.patch_plan ? [`patch_plan: ${document.manifest.patch_plan}`] : []),
           `description: ${document.manifest.description || '(none)'}`,
           `task_type: ${document.manifest.task_type}`,
           `triggers: ${document.manifest.triggers.join(', ') || '(none)'}`,
@@ -184,7 +186,12 @@ export function createLearningCommandHandler(
       if (drafts.length === 0) {
         emitRuntime({ type: 'turn_completed', turnId, content: 'No draft skills pending review.' });
       } else {
-        const lines = drafts.map((d) => `- ${d.id}: ${d.name} [${d.task_type}]`);
+        const lines = await Promise.all(drafts.map(async (d) => {
+          const document = await skillStore.loadDocument(d.id);
+          const kind = document?.manifest.draft_kind ?? 'create';
+          const target = document?.manifest.target_skill_id ? ` -> ${document.manifest.target_skill_id}` : '';
+          return `- ${d.id}: ${d.name} [${d.task_type}; ${kind}${target}]`;
+        }));
         emitRuntime({ type: 'turn_completed', turnId, content: ['Draft skills pending review:', ...lines].join('\n') });
       }
       return true;
@@ -251,8 +258,29 @@ export interface TurnRouterDependencies {
   triggerLearningAfterTurn: (
     taskType: string,
     userInput: string,
-    payload?: { tool_calls?: ToolCall[]; tool_results?: ToolResult[] },
+    payload?: LearningTurnPayload,
   ) => Promise<void>;
+}
+
+function buildLearningPayload(
+  summary: Awaited<ReturnType<typeof handle_normal_turn>>,
+  skillSignals: Pick<LearningTurnPayload, 'matched_skill_ids' | 'used_skill_ids'> = {},
+): LearningTurnPayload {
+  const usedSkillIds = new Set(summary.usedSkillIds);
+  for (const id of skillSignals.used_skill_ids ?? []) usedSkillIds.add(id);
+
+  return {
+    tool_calls: summary.toolCalls,
+    tool_results: summary.toolResults,
+    tool_call_count: summary.toolCallCount,
+    used_skill_ids: [...usedSkillIds],
+    matched_skill_ids: skillSignals.matched_skill_ids ?? [],
+    skill_loads: [...new Set([...summary.skillLoads, ...usedSkillIds])],
+    error_count: summary.errorCount,
+    final_outcome: summary.finalOutcome,
+    task_complexity_signal: summary.taskComplexitySignal,
+    skill_feedback: 'none',
+  };
 }
 
 export function createHandleUserInputTurn(
@@ -331,10 +359,10 @@ export function createHandleUserInputTurn(
           ],
         });
         await persistTurnMemory(trimmed, session, provider, memoryIndexStore, memoryTopicStore);
-        void triggerLearningAfterTurn(turnTaskType, trimmed, {
-          tool_calls: normalTurnSummary.toolCalls,
-          tool_results: normalTurnSummary.toolResults,
-        });
+        void triggerLearningAfterTurn(turnTaskType, trimmed, buildLearningPayload(normalTurnSummary, {
+          matched_skill_ids: [matchedSkill.id],
+          used_skill_ids: [matchedSkill.id],
+        }));
         return;
       }
 
@@ -353,10 +381,9 @@ export function createHandleUserInputTurn(
         extraSystemMessages: memorySystemMessages,
       });
       await persistTurnMemory(trimmed, session, provider, memoryIndexStore, memoryTopicStore);
-      void triggerLearningAfterTurn(turnTaskType, trimmed, {
-        tool_calls: normalTurnSummary.toolCalls,
-        tool_results: normalTurnSummary.toolResults,
-      });
+      void triggerLearningAfterTurn(turnTaskType, trimmed, buildLearningPayload(normalTurnSummary, {
+        matched_skill_ids: suggestedSkill ? [suggestedSkill.id] : [],
+      }));
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       const userMessage = `Error: ${message}`;

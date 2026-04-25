@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { RuntimeEventInput } from '../../src/repl/runtime.js';
-import { createLearningCommandHandler } from '../../src/repl/turn-router.js';
+import { createHandleUserInputTurn, createLearningCommandHandler } from '../../src/repl/turn-router.js';
+import type { LLMProvider, Message, Session } from '../../src/foundation/types.js';
 
 const draftDocument = {
   manifest: {
@@ -90,5 +91,102 @@ describe('repl/turn-router learning commands', () => {
       source_path: '.chromatopsia/skills/user/draft-skill/SKILL.md',
     }));
     expect(register).toHaveBeenCalledWith(approved);
+  });
+
+  it('records slash skill usage in the learning payload', async () => {
+    const messages: Message[] = [];
+    const session = {
+      id: 'session-1',
+      messages,
+      working_directory: '/tmp',
+      created_at: Date.now(),
+      last_active: Date.now(),
+      add_message: (msg: Message) => messages.push(msg),
+      clear: vi.fn(),
+      compact: vi.fn(),
+    } as unknown as Session;
+    const provider: LLMProvider = {
+      name: 'mock',
+      chat: vi.fn(),
+      chat_stream: vi.fn(async function* () {
+        yield 'd';
+        yield 'o';
+        yield 'n';
+        yield 'e';
+        return { content: 'done', finish_reason: 'stop' };
+      }),
+      get_model: () => 'mock-model',
+    };
+    const skill = {
+      id: 'slash-skill',
+      name: 'Slash Skill',
+      task_type: 'git',
+      trigger_condition: 'slash skill',
+      steps: [],
+      pitfalls: [],
+      created_at: Date.now(),
+      updated_at: Date.now(),
+      call_count: 0,
+      success_count: 0,
+    };
+    const triggerLearningAfterTurn = vi.fn(async () => {});
+    const handler = createHandleUserInputTurn({
+      session,
+      provider,
+      skillRegistry: {
+        trigger_match: vi.fn(() => null),
+        build_directory_listing: vi.fn(() => ''),
+      } as never,
+      skillStore: {
+        getAll: vi.fn(() => [skill]),
+        getManifest: vi.fn(() => [{
+          id: 'slash-skill',
+          name: 'Slash Skill',
+          description: 'slash skill',
+          triggers: ['slash skill'],
+          task_type: 'git',
+          scope: 'user',
+          enabled: true,
+          priority: 50,
+          version: 1,
+          updated_at: new Date().toISOString(),
+          source_path: '.chromatopsia/skills/user/slash-skill/SKILL.md',
+        }]),
+        loadDocument: vi.fn(async () => ({
+          ...draftDocument,
+          manifest: {
+            ...draftDocument.manifest,
+            id: 'slash-skill',
+            name: 'Slash Skill',
+            task_type: 'git',
+            scope: 'user',
+            enabled: true,
+          },
+        })),
+      } as never,
+      approvalHook: {
+        request_approval: vi.fn(() => null),
+        wait_for_decision: vi.fn(),
+      } as never,
+      toolContext: { session, working_directory: '/tmp' },
+      isDebug: false,
+      runtime: { emit: vi.fn() },
+      runtimeMetadata: { agentId: 'main' },
+      emitRuntime: vi.fn(),
+      slashHandler: vi.fn(() => false),
+      handleLearningCommand: vi.fn(async () => false),
+      memoryIndexStore: {} as never,
+      memoryTopicStore: {} as never,
+      triggerLearningAfterTurn,
+    });
+
+    await handler('/slash-skill inspect repo');
+
+    expect(triggerLearningAfterTurn).toHaveBeenCalledWith('git', '/slash-skill inspect repo', expect.objectContaining({
+      used_skill_ids: ['slash-skill'],
+      matched_skill_ids: ['slash-skill'],
+      skill_loads: ['slash-skill'],
+      final_outcome: 'success',
+    }));
   });
 });

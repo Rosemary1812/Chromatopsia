@@ -94,6 +94,14 @@ describe('learning/worker', () => {
     await worker.onTurnCompleted('git', 'check repo', {
       tool_calls: [toolCall],
       tool_results: [toolResult],
+      tool_call_count: 5,
+      used_skill_ids: ['git-skill'],
+      matched_skill_ids: ['git-skill'],
+      skill_loads: ['git-skill'],
+      error_count: 0,
+      final_outcome: 'success',
+      task_complexity_signal: 'complex',
+      skill_feedback: 'helpful',
     });
 
     expect(append).toHaveBeenCalledWith(expect.objectContaining({
@@ -101,6 +109,14 @@ describe('learning/worker', () => {
       user_input: 'check repo',
       tool_calls: [toolCall],
       tool_results: [toolResult],
+      tool_call_count: 5,
+      used_skill_ids: ['git-skill'],
+      matched_skill_ids: ['git-skill'],
+      skill_loads: ['git-skill'],
+      error_count: 0,
+      final_outcome: 'success',
+      task_complexity_signal: 'complex',
+      skill_feedback: 'helpful',
     }));
   });
 
@@ -132,7 +148,15 @@ describe('learning/worker', () => {
   });
 
   it('saves synthesized SKILL.md draft documents', async () => {
-    const provider = createProvider(skillMarkdown);
+    const provider = createProvider(JSON.stringify({
+      decision: 'create',
+      confidence: 0.9,
+      reasoning: 'reusable workflow',
+      target_skill_id: null,
+      evidence: ['two successful tool-backed turns'],
+      risk_notes: [],
+      skill_markdown: skillMarkdown,
+    }));
     const saveDraft = vi.fn(async () => {});
     const eventStore = {
       append: vi.fn(async () => {}),
@@ -148,7 +172,7 @@ describe('learning/worker', () => {
       provider,
       session: createSession(),
       skillStore: { save_draft: saveDraft } as never,
-      skillRegistry: { match: vi.fn(() => null), fuzzy_match: vi.fn(() => []) } as never,
+      skillRegistry: { match: vi.fn(() => null), fuzzy_match: vi.fn(() => []), getById: vi.fn() } as never,
       eventStore: eventStore as never,
     }, 2, 0.75);
 
@@ -160,14 +184,23 @@ describe('learning/worker', () => {
         id: 'git-status-review',
         scope: 'learning_draft',
         enabled: false,
+        draft_kind: 'create',
       }),
       body: expect.stringContaining('## Procedure'),
     }));
     expect(eventStore.resetSessionTurns).toHaveBeenCalledWith('session-1');
   });
 
-  it('does not reset turn counter when synthesis does not produce an approved draft', async () => {
-    const provider = createProvider('{"should_learn":false,"confidence":0.4,"reasoning":"not reusable","skill":{}}');
+  it('does not save create drafts below min confidence', async () => {
+    const provider = createProvider(JSON.stringify({
+      decision: 'create',
+      confidence: 0.5,
+      reasoning: 'weak signal',
+      target_skill_id: null,
+      evidence: [],
+      risk_notes: [],
+      skill_markdown: skillMarkdown,
+    }));
     const saveDraft = vi.fn(async () => {});
     const eventStore = {
       append: vi.fn(async () => {}),
@@ -183,7 +216,86 @@ describe('learning/worker', () => {
       provider,
       session: createSession(),
       skillStore: { save_draft: saveDraft } as never,
-      skillRegistry: { match: vi.fn(() => null), fuzzy_match: vi.fn(() => []) } as never,
+      skillRegistry: { match: vi.fn(() => null), fuzzy_match: vi.fn(() => []), getById: vi.fn() } as never,
+      eventStore: eventStore as never,
+    }, 2, 0.75);
+
+    const result = await worker.onTurnCompleted('git', 'check repo');
+
+    expect(result.triggered).toBe(false);
+    expect(saveDraft).not.toHaveBeenCalled();
+    expect(eventStore.resetSessionTurns).not.toHaveBeenCalled();
+  });
+
+  it('saves patch drafts for existing active skills', async () => {
+    const provider = createProvider(JSON.stringify({
+      decision: 'patch',
+      confidence: 0.9,
+      reasoning: 'existing skill missed verification',
+      target_skill_id: 'existing-git-skill',
+      patch_plan: 'Add verification guidance.',
+      evidence: ['failed verification was recovered manually'],
+      risk_notes: [],
+      skill_markdown: skillMarkdown,
+    }));
+    const savePatchDraft = vi.fn(async () => {});
+    const eventStore = {
+      append: vi.fn(async () => {}),
+      incrementSessionTurns: vi.fn(async () => 2),
+      recentBySession: vi.fn(async () => [
+        makeEvent({ tool_calls: [toolCall], tool_results: [toolResult] }),
+        makeEvent({ tool_calls: [toolCall], tool_results: [toolResult] }),
+      ]),
+      resetSessionTurns: vi.fn(async () => {}),
+    };
+
+    const worker = new LearningWorker({
+      provider,
+      session: createSession(),
+      skillStore: { save_draft: vi.fn(), save_patch_draft: savePatchDraft } as never,
+      skillRegistry: {
+        match: vi.fn(() => null),
+        fuzzy_match: vi.fn(() => []),
+        getById: vi.fn(() => ({ id: 'existing-git-skill' })),
+      } as never,
+      eventStore: eventStore as never,
+    }, 2, 0.75);
+
+    const result = await worker.onTurnCompleted('git', 'check repo');
+
+    expect(result).toEqual({ triggered: true, draftName: 'Git Status Review' });
+    expect(savePatchDraft).toHaveBeenCalledWith(
+      expect.objectContaining({
+        manifest: expect.objectContaining({
+          draft_kind: 'patch',
+          target_skill_id: 'existing-git-skill',
+          patch_plan: 'Add verification guidance.',
+        }),
+      }),
+      'existing-git-skill',
+      'Add verification guidance.',
+    );
+    expect(eventStore.resetSessionTurns).toHaveBeenCalledWith('session-1');
+  });
+
+  it('does not reset turn counter when synthesis does not produce an approved draft', async () => {
+    const provider = createProvider('{"decision":"skip","confidence":0.4,"reasoning":"not reusable"}');
+    const saveDraft = vi.fn(async () => {});
+    const eventStore = {
+      append: vi.fn(async () => {}),
+      incrementSessionTurns: vi.fn(async () => 2),
+      recentBySession: vi.fn(async () => [
+        makeEvent({ tool_calls: [toolCall], tool_results: [toolResult] }),
+        makeEvent({ tool_calls: [toolCall], tool_results: [toolResult] }),
+      ]),
+      resetSessionTurns: vi.fn(async () => {}),
+    };
+
+    const worker = new LearningWorker({
+      provider,
+      session: createSession(),
+      skillStore: { save_draft: saveDraft } as never,
+      skillRegistry: { match: vi.fn(() => null), fuzzy_match: vi.fn(() => []), getById: vi.fn() } as never,
       eventStore: eventStore as never,
     }, 2, 0.75);
 

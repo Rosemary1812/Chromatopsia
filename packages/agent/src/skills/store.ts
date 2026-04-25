@@ -34,6 +34,10 @@ function sourcePathForRuntime(subdir: typeof USER_DIR | typeof DRAFTS_DIR, entry
   return normalizePath(path.join(CHROMATOPSIA_DIR, SKILLS_DIR, subdir, isDirectory ? path.join(entryName, SKILL_MD) : entryName));
 }
 
+function uniquePatchDraftId(targetSkillId: string): string {
+  return `patch-${targetSkillId}-${Date.now().toString(36)}`;
+}
+
 export class SkillStore {
   private skills = new Map<string, Skill>();
   private manifest = new Map<string, SkillManifestEntry>();
@@ -181,6 +185,39 @@ export class SkillStore {
     await this.#writeIndex();
   }
 
+  async save_patch_draft(document: SkillDocument, targetSkillId: string, patchPlan: string): Promise<void> {
+    const target = this.manifest.get(targetSkillId);
+    if (!target || target.scope === 'learning_draft' || target.enabled === false) {
+      throw new Error(`Patch target skill is not available: ${targetSkillId}`);
+    }
+
+    const draftId = uniquePatchDraftId(targetSkillId);
+    const sourcePath = normalizePath(path.join(CHROMATOPSIA_DIR, SKILLS_DIR, DRAFTS_DIR, draftId, SKILL_MD));
+    const draftDocument: SkillDocument = {
+      ...document,
+      manifest: {
+        ...document.manifest,
+        id: draftId,
+        scope: 'learning_draft',
+        enabled: false,
+        priority: Math.min(document.manifest.priority, 10),
+        updated_at: new Date().toISOString(),
+        sourcePath,
+        source_path: sourcePath,
+        draft_kind: 'patch',
+        target_skill_id: targetSkillId,
+        patch_plan: patchPlan,
+      },
+    };
+
+    const markdown = serializeSkillMarkdown(draftDocument.manifest, draftDocument.body);
+    const absolutePath = await this.#resolveManifestPath(sourcePath);
+    await fs.mkdir(path.dirname(absolutePath), { recursive: true });
+    await fs.writeFile(absolutePath, markdown, 'utf-8');
+    this.#registerDocument({ ...draftDocument, raw: markdown });
+    await this.#writeIndex();
+  }
+
   list_drafts(): Skill[] {
     return [...this.skills.entries()]
       .filter(([id]) => this.manifest.get(id)?.scope === 'learning_draft')
@@ -192,6 +229,10 @@ export class SkillStore {
     const entry = this.manifest.get(id);
     if (!document || !entry || entry.scope !== 'learning_draft') return null;
 
+    if (entry.draft_kind === 'patch') {
+      return this.approve_patch_draft(id);
+    }
+
     await this.delete(id);
     const sourcePath = normalizePath(path.join(CHROMATOPSIA_DIR, SKILLS_DIR, USER_DIR, id, SKILL_MD));
     const manifest: SkillManifestEntry = {
@@ -202,6 +243,9 @@ export class SkillStore {
       updated_at: new Date().toISOString(),
       sourcePath,
       source_path: sourcePath,
+      draft_kind: undefined,
+      target_skill_id: undefined,
+      patch_plan: undefined,
     };
     const markdown = serializeSkillMarkdown(manifest, document.body);
     const absolutePath = await this.#resolveManifestPath(sourcePath);
@@ -211,6 +255,42 @@ export class SkillStore {
     if (parsed) this.#registerDocument({ ...parsed, manifest });
     await this.#writeIndex();
     return this.skills.get(id) ?? null;
+  }
+
+  async approve_patch_draft(id: string): Promise<Skill | null> {
+    const document = this.documents.get(id);
+    const entry = this.manifest.get(id);
+    const targetSkillId = entry?.target_skill_id;
+    if (!document || !entry || entry.scope !== 'learning_draft' || entry.draft_kind !== 'patch' || !targetSkillId) {
+      return null;
+    }
+
+    const target = this.manifest.get(targetSkillId);
+    if (!target || target.scope === 'learning_draft' || target.enabled === false) return null;
+
+    await this.delete(id);
+    const sourcePath = normalizePath(path.join(CHROMATOPSIA_DIR, SKILLS_DIR, USER_DIR, targetSkillId, SKILL_MD));
+    const manifest: SkillManifestEntry = {
+      ...document.manifest,
+      id: targetSkillId,
+      scope: 'user',
+      enabled: true,
+      priority: Math.max(target.priority, 50),
+      updated_at: new Date().toISOString(),
+      sourcePath,
+      source_path: sourcePath,
+      draft_kind: undefined,
+      target_skill_id: undefined,
+      patch_plan: undefined,
+    };
+    const markdown = serializeSkillMarkdown(manifest, document.body);
+    const absolutePath = await this.#resolveManifestPath(sourcePath);
+    await fs.mkdir(path.dirname(absolutePath), { recursive: true });
+    await fs.writeFile(absolutePath, markdown, 'utf-8');
+    const parsed = parseSkillMarkdown(markdown, sourcePath);
+    if (parsed) this.#registerDocument({ ...parsed, manifest });
+    await this.#writeIndex();
+    return this.skills.get(targetSkillId) ?? null;
   }
 
   async reject_draft(id: string): Promise<boolean> {
@@ -298,6 +378,7 @@ export class SkillStore {
         loaded.manifest.scope = 'builtin';
         loaded.manifest.sourcePath = normalizePath(path.join(sourcePrefix, relative));
         loaded.manifest.source_path = loaded.manifest.sourcePath;
+        if (this.manifest.has(loaded.manifest.id)) continue;
         this.#registerDocument(loaded);
       }
       return;
@@ -420,18 +501,20 @@ export class SkillStore {
       sourcePath: document.manifest.sourcePath ?? document.manifest.source_path,
       source_path: document.manifest.source_path ?? document.manifest.sourcePath,
     };
-    const skill = document.skill ?? {
+    const skill = {
+      ...(document.skill ?? {
+        trigger_condition: manifest.triggers.join(' ') || manifest.description || manifest.name,
+        steps: [],
+        pitfalls: [],
+        created_at: Date.now(),
+        call_count: 0,
+        success_count: 0,
+      }),
       id: manifest.id,
       name: manifest.name,
-      trigger_condition: manifest.triggers.join(' ') || manifest.description || manifest.name,
       trigger_pattern: manifest.trigger_pattern,
-      steps: [],
-      pitfalls: [],
       task_type: manifest.task_type,
-      created_at: Date.now(),
       updated_at: Date.parse(manifest.updated_at) || Date.now(),
-      call_count: 0,
-      success_count: 0,
     };
     this.manifest.set(manifest.id, manifest);
     this.skills.set(skill.id, skill);

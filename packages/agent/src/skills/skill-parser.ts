@@ -131,6 +131,9 @@ export function parseSkillMarkdown(raw: string, sourcePath: string): ParsedSkill
     updated_at,
     sourcePath: normalizedSource,
     source_path: normalizedSource,
+    draft_kind: data.draft_kind === 'patch' ? 'patch' : data.draft_kind === 'create' ? 'create' : undefined,
+    target_skill_id: typeof data.target_skill_id === 'string' && data.target_skill_id ? data.target_skill_id : undefined,
+    patch_plan: typeof data.patch_plan === 'string' && data.patch_plan ? data.patch_plan : undefined,
   };
 
   const trigger_condition = typeof data.trigger_condition === 'string'
@@ -192,6 +195,9 @@ export function serializeSkillMarkdown(manifest: SkillManifestEntry, skillOrBody
     `priority: ${manifest.priority}`,
     `version: ${manifest.version}`,
     `updated_at: ${manifest.updated_at}`,
+    ...(manifest.draft_kind ? [`draft_kind: ${manifest.draft_kind}`] : []),
+    ...(manifest.target_skill_id ? [`target_skill_id: ${manifest.target_skill_id}`] : []),
+    ...(manifest.patch_plan ? [`patch_plan: ${manifest.patch_plan.replace(/\r?\n/g, ' ')}`] : []),
     '---',
     '',
     body,

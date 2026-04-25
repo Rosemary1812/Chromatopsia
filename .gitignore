@@ -104,3 +104,6 @@ bin/
 docs/
 scripts/
 tmp_codex_patch_test.txt
+
+# Personal todo lists
+SKILL_OPTIMIZATION_TODO.md
