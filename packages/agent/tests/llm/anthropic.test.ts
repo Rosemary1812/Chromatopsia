@@ -299,6 +299,44 @@ describe('AnthropicProvider', () => {
       expect(chunks).toEqual(['Hello ', 'there!']);
     });
 
+    it('should return token usage from streaming final message', async () => {
+      const messages: Message[] = [{ role: 'user', content: 'Hello' }];
+
+      const mockStream = {
+        async *[Symbol.asyncIterator]() {
+          yield { type: 'content_block_delta', delta: { type: 'text_delta', text: 'Hello!' } };
+        },
+        finalMessage: vi.fn().mockResolvedValue({
+          usage: {
+            input_tokens: 123,
+            output_tokens: 45,
+            cache_creation_input_tokens: 67,
+            cache_read_input_tokens: 8,
+          },
+        }),
+      };
+
+      __mockMessagesStream.mockResolvedValueOnce(mockStream);
+
+      const stream = provider.chat_stream(messages);
+      let finalResponse: LLMResponse | undefined;
+      while (true) {
+        const next = await stream.next();
+        if (next.done) {
+          finalResponse = next.value;
+          break;
+        }
+      }
+
+      expect(mockStream.finalMessage).toHaveBeenCalled();
+      expect(finalResponse?.token_usage).toEqual({
+        input: 123,
+        output: 45,
+        cache_creation: 67,
+        cache_read: 8,
+      });
+    });
+
     it('should collect thinking_delta and indexed input_json_delta fragments', async () => {
       const messages: Message[] = [{ role: 'user', content: 'Run a command' }];
 

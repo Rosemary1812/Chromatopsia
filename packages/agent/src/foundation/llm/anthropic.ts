@@ -217,7 +217,7 @@ export class AnthropicProvider implements LLMProvider {
         console.debug(`[Cache] Created: ${usage.cache_creation_input_tokens} tokens cached`);
       }
       if (usage?.cache_read_input_tokens && usage.cache_read_input_tokens > 0) {
-        console.debug(`[Cache] Hit: read ${usage.cache_read_input_tokens} tokens from cache, saved ${Math.round(usage.cache_read_input_tokens * 0.9)} tokens (90% discount)`);
+        console.debug(`[Cache] Hit: read ${usage.cache_read_input_tokens} tokens from cache`);
       }
 
       return {
@@ -374,13 +374,13 @@ export class AnthropicProvider implements LLMProvider {
       }
 
       // P0-3: 缓存统计日志（streaming）
-      const finalMessage = typeof (stream as any).finalMessage === 'function' ? (stream as any).finalMessage() : undefined;
+      const finalMessage = typeof (stream as any).finalMessage === 'function' ? await (stream as any).finalMessage() : undefined;
       const usage = finalMessage?.usage;
       if (usage?.cache_creation_input_tokens && usage.cache_creation_input_tokens > 0) {
         console.debug(`[Cache] Created: ${usage.cache_creation_input_tokens} tokens cached`);
       }
       if (usage?.cache_read_input_tokens && usage.cache_read_input_tokens > 0) {
-        console.debug(`[Cache] Hit: read ${usage.cache_read_input_tokens} tokens from cache, saved ${Math.round(usage.cache_read_input_tokens * 0.9)} tokens (90% discount)`);
+        console.debug(`[Cache] Hit: read ${usage.cache_read_input_tokens} tokens from cache`);
       }
 
       // Note: the return value is what the for...of receives when the generator finishes

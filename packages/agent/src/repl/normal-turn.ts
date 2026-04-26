@@ -34,6 +34,7 @@ export interface HandleNormalTurnOptions {
   turnId: string;
   runtimeMetadata: { agentId: string; agentRole?: RuntimeAgentRole };
   extraSystemMessages?: Message[];
+  maxToolRounds?: number;
 }
 
 export interface NormalTurnExecutionSummary {
@@ -291,7 +292,7 @@ export async function handle_normal_turn(
     runtimeMetadata,
     extraSystemMessages = [],
   } = options;
-  const MAX_TOOL_ROUNDS = 16;
+  const MAX_TOOL_ROUNDS = options.maxToolRounds ?? 16;
   let round = 0;
   let loopState: NormalTurnLoopState = {
     noProgressRounds: 0,

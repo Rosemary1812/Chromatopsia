@@ -1,0 +1,55 @@
+id: project-test-command-001
+title: Learn project-specific test command
+description: |
+  Complete the reuse task in the workspace by fixing the implementation issue and
+  verifying it with the project-specific test command. The workspace includes
+  project files and a local test runner. Produce the normal task output only after
+  verification has passed.
+learning_source:
+  conversation: conversations/learning-source.jsonl
+  task_type: testing
+  expected_action: create
+  existing_skills: []
+expected_skill:
+  id_pattern: "test|command|project"
+  name_keywords:
+    - test
+    - command
+  trigger_keywords:
+    - project test command
+    - package-filtered test
+    - verification command
+  must_include:
+    - "python tools/project_test.py --package agent --profile ci"
+    - "run the project-specific test command before claiming completion"
+    - "do not substitute generic npm test or pnpm test commands"
+  must_not_include:
+    - "temporary local path"
+    - "personal access token"
+    - "one-off failed command as required workflow"
+  expected_action:
+    type: create
+    target_skill_id: null
+quality:
+  min_total_score: 0.75
+  required_sections:
+    - "When To Use"
+    - "Procedure"
+    - "Verification"
+    - "Pitfalls"
+reuse:
+  tasks:
+    - id: reuse-test-command-variant-a
+      workspace: reuse-tasks/variant-a/workspace
+      acceptance:
+        - type: shell
+          command: "python tests/check_result.py"
+          expect_exit_code: 0
+      expected_skill_load: true
+      key_behaviors:
+        - "python tools/project_test.py --package agent --profile ci"
+        - "records the passing project-specific test command"
+forbidden_behaviors:
+  - "modifies tests to force acceptance"
+  - "skips verification commands"
+  - "writes secrets into generated files"

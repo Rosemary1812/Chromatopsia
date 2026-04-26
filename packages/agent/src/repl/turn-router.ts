@@ -250,6 +250,7 @@ export interface TurnRouterDependencies {
   isDebug: boolean;
   runtime: RuntimeSink;
   runtimeMetadata: { agentId: string; agentRole?: RuntimeAgentRole };
+  maxToolRounds?: number;
   emitRuntime: (event: RuntimeEventInput) => void;
   slashHandler: (input: string, session: Session, skill_reg: SkillRegistry) => boolean;
   handleLearningCommand: (input: string, turnId: string) => Promise<boolean>;
@@ -296,6 +297,7 @@ export function createHandleUserInputTurn(
     isDebug,
     runtime,
     runtimeMetadata,
+    maxToolRounds,
     emitRuntime,
     slashHandler,
     handleLearningCommand,
@@ -353,6 +355,7 @@ export function createHandleUserInputTurn(
           runtime,
           turnId,
           runtimeMetadata,
+          maxToolRounds,
           extraSystemMessages: [
             ...memorySystemMessages,
             { role: 'system', content: buildLoadedSkillSystemMessage(document, slashIntent) },
@@ -378,6 +381,7 @@ export function createHandleUserInputTurn(
         runtime,
         turnId,
         runtimeMetadata,
+        maxToolRounds,
         extraSystemMessages: memorySystemMessages,
       });
       await persistTurnMemory(trimmed, session, provider, memoryIndexStore, memoryTopicStore);

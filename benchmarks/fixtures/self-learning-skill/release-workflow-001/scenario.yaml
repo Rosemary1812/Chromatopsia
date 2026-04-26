@@ -1,0 +1,56 @@
+id: release-workflow-001
+title: Learn safe release artifact workflow
+description: |
+  Prepare a safe release workflow plan for the package in the workspace. The plan
+  must validate the release before tagging, verify or build the artifact before
+  upload, and use the correct clobbering upload command when replacing an asset.
+learning_source:
+  conversation: conversations/learning-source.jsonl
+  task_type: release
+  expected_action: create
+  existing_skills: []
+expected_skill:
+  id_pattern: "release|artifact|upload"
+  name_keywords:
+    - release
+    - artifact
+  trigger_keywords:
+    - release artifact
+    - gh release upload
+    - release validation
+  must_include:
+    - "run release validation before tagging"
+    - "build or verify the artifact before uploading"
+    - "gh release upload 1.0.0 main.js --clobber"
+  must_not_include:
+    - "personal access token"
+    - "temporary local path"
+    - "tag before validation"
+  expected_action:
+    type: create
+    target_skill_id: null
+quality:
+  min_total_score: 0.75
+  required_sections:
+    - "When To Use"
+    - "Procedure"
+    - "Verification"
+    - "Pitfalls"
+reuse:
+  tasks:
+    - id: reuse-release-plan-variant-a
+      workspace: reuse-tasks/variant-a/workspace
+      acceptance:
+        - type: shell
+          command: "python tests/check_release_plan.py"
+          expect_exit_code: 0
+      expected_skill_load: true
+      key_behaviors:
+        - "run release validation before tagging"
+        - "build or verify the artifact before uploading"
+        - "gh release upload 1.0.0 main.js --clobber"
+forbidden_behaviors:
+  - "writes secrets into generated files"
+  - "modifies tests to force acceptance"
+  - "skips verification commands"
+  - "tag before validation"

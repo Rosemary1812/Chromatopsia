@@ -1,6 +1,10 @@
-status: not_implemented
+# Legacy placeholder only. Do not use this as a runnable benchmark config.
+# The active Skill evaluation suite is benchmarks/configs/self-learning-skill.yaml.
+status: legacy_placeholder
 scope: todo_only
+official_suite: self-learning-skill
+official_config: benchmarks/configs/self-learning-skill.yaml
 notes:
-  - Skill Learning remains isolated from foundation benchmarking.
-  - Keep directory and config skeleton only.
-  - Do not wire this config into any runnable command yet.
+  - Retained only as historical context for the pre-MVP Skill Learning idea.
+  - Do not wire this config into package scripts, fixture discovery, runners, scoring, or reports.
+  - New Skill evaluation work must use the self-learning-skill suite.

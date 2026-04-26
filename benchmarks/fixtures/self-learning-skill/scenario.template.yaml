@@ -1,0 +1,52 @@
+id: learn-example-001
+title: "Learn a reusable workflow from historical conversation"
+description: |
+  Describe the reusable experience that should be learned from the source
+  conversation and verified in a similar reuse task.
+
+learning_source:
+  conversation: conversations/learning-source.jsonl
+  task_type: example
+  expected_action: create
+  existing_skills: []
+
+expected_skill:
+  id_pattern: "example|workflow"
+  name_keywords:
+    - example
+  trigger_keywords:
+    - example
+    - workflow
+  must_include:
+    - "key reusable instruction"
+    - "verification step"
+  must_not_include:
+    - "temporary local path"
+    - "secret value"
+  expected_action:
+    type: create
+    target_skill_id: null
+
+quality:
+  min_total_score: 0.75
+  required_sections:
+    - "When To Use"
+    - "Procedure"
+    - "Verification"
+    - "Pitfalls"
+
+reuse:
+  tasks:
+    - id: reuse-example-variant-a
+      workspace: reuse-tasks/task-a/workspace
+      acceptance:
+        - type: shell
+          command: "python tests/check_result.py"
+          expect_exit_code: 0
+      expected_skill_load: true
+      key_behaviors:
+        - "uses the learned verification step"
+
+forbidden_behaviors:
+  - "modifies tests to force acceptance"
+  - "skips verification commands"

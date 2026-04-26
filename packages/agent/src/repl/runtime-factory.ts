@@ -33,6 +33,7 @@ export async function create_agent_runtime_impl(
     logLevel = 'error',
     agentId = 'main',
     agentRole = 'main',
+    maxToolRounds,
   } = options;
 
   const loadedAppConfig = app_config ?? (config_path ? await load_config(config_path) : undefined);
@@ -225,6 +226,7 @@ export async function create_agent_runtime_impl(
     isDebug,
     runtime: instrumentedRuntime,
     runtimeMetadata,
+    maxToolRounds,
     emitRuntime,
     slashHandler: slash_handler,
     handleLearningCommand,

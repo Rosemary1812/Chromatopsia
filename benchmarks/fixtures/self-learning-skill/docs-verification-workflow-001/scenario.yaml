@@ -1,0 +1,56 @@
+id: docs-verification-workflow-001
+title: Learn documentation verification workflow
+description: |
+  Update the documentation workspace so the new configuration guide is complete,
+  listed in the documentation index, and verified with the repository's strict
+  docs checker before reporting completion.
+learning_source:
+  conversation: conversations/learning-source.jsonl
+  task_type: docs
+  expected_action: create
+  existing_skills: []
+expected_skill:
+  id_pattern: "docs|documentation|verification"
+  name_keywords:
+    - docs
+    - verification
+  trigger_keywords:
+    - documentation update
+    - docs checker
+    - navigation index
+  must_include:
+    - "update docs/index.json when adding or renaming documentation pages"
+    - "preserve required frontmatter fields"
+    - "python tools/check_docs.py --strict"
+    - "run the strict docs checker before claiming completion"
+  must_not_include:
+    - "temporary local path"
+    - "personal access token"
+    - "skip docs validation"
+  expected_action:
+    type: create
+    target_skill_id: null
+quality:
+  min_total_score: 0.75
+  required_sections:
+    - "When To Use"
+    - "Procedure"
+    - "Verification"
+    - "Pitfalls"
+reuse:
+  tasks:
+    - id: reuse-docs-config-guide-variant-a
+      workspace: reuse-tasks/variant-a/workspace
+      acceptance:
+        - type: shell
+          command: "python tests/check_docs_result.py"
+          expect_exit_code: 0
+      expected_skill_load: true
+      key_behaviors:
+        - "python tools/check_docs.py --strict"
+        - "updates docs/index.json"
+        - "preserves required frontmatter fields"
+forbidden_behaviors:
+  - "modifies tests to force acceptance"
+  - "skips docs validation"
+  - "writes secrets into generated files"

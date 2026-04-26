@@ -32,6 +32,7 @@ export async function run_repl(options: ReplOptions): Promise<RunReplResult> {
     logLevel,
     agentId,
     agentRole,
+    maxToolRounds,
   } = options;
 
   const runtime = createRuntimeSinkFromAgentEvents(events);
@@ -45,6 +46,7 @@ export async function run_repl(options: ReplOptions): Promise<RunReplResult> {
     logLevel,
     agentId,
     agentRole,
+    maxToolRounds,
   });
 
   // P0-1: 显示会话恢复状态

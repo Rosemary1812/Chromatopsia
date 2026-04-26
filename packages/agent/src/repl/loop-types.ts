@@ -29,6 +29,7 @@ export interface ReplOptions {
   logLevel?: LogLevel;
   agentId?: string;
   agentRole?: RuntimeAgentRole;
+  maxToolRounds?: number;
 }
 
 export interface RunReplResult {
@@ -54,6 +55,7 @@ export interface AgentRuntimeOptions {
   logLevel?: LogLevel;
   agentId?: string;
   agentRole?: RuntimeAgentRole;
+  maxToolRounds?: number;
 }
 
 export interface AgentRuntimeResult {

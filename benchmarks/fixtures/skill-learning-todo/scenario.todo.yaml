@@ -1,4 +1,6 @@
-status: not_implemented
+# Legacy placeholder only. Not loaded by any benchmark runner.
+status: legacy_placeholder
+official_suite: self-learning-skill
 example:
   id: python-bugfix-pattern
   train_tasks:
